@@ -1,0 +1,39 @@
+name: Update SAP AI Catalog
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install playwright
+
+      - name: Install Chromium browser
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run catalog updater
+        run: python scripts/update_catalog.py
+
+      - name: Commit and push if catalog changed
+        run: |
+          git config user.name  "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add Opportunity-Card-4Manager-v4.html
+          git diff --staged --quiet \
+            && echo "No changes to commit." \
+            || git commit -m "auto: update AI catalog $(date +'%Y-%m-%d')" && git push
