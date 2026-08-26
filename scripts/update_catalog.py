@@ -72,18 +72,57 @@ def build_catalog(raw: list) -> list:
     catalog = []
     seen    = set()
 
+    # Debug: print all field names from the first entry
+    # so we can see exactly what the API returns
+    if raw and isinstance(raw[0], dict):
+        print("\nDEBUG — API field names:", list(raw[0].keys()))
+        print("DEBUG — First entry sample:")
+        print(json.dumps(raw[0], indent=2, ensure_ascii=False)[:600])
+        print()
+
     for f in raw:
         if not isinstance(f, dict):
             continue
 
-        name    = (f.get("name")           or f.get("Name")           or "").strip()
-        product = (f.get("product")        or f.get("productName")
-                   or f.get("Product")     or "").strip()
-        desc    = (f.get("description")    or f.get("Description")    or "").strip()
-        ctype   = (f.get("commercialType") or f.get("CommercialType")
-                   or f.get("package")     or f.get("Package")        or "")
-        qf      = (f.get("quickFilters")   or f.get("QuickFilters")   or "")
-        pkg     = (f.get("package")        or f.get("Package")        or "")
+        name = (
+            f.get("name") or f.get("Name") or
+            f.get("title") or f.get("Title") or ""
+        ).strip()
+
+        product = (
+            f.get("product") or f.get("productName") or
+            f.get("Product") or f.get("ProductName") or
+            f.get("solution") or f.get("Solution") or ""
+        ).strip()
+
+        # Try every common field name SAP might use for description
+        desc = (
+            f.get("description") or
+            f.get("Description") or
+            f.get("shortDescription") or
+            f.get("ShortDescription") or
+            f.get("short_description") or
+            f.get("summary") or
+            f.get("Summary") or
+            f.get("longDescription") or
+            f.get("LongDescription") or
+            f.get("abstract") or
+            f.get("Abstract") or
+            f.get("text") or
+            f.get("Text") or ""
+        ).strip()
+
+        ctype = (
+            f.get("commercialType") or f.get("CommercialType") or
+            f.get("licenseModel") or f.get("LicenseModel") or
+            f.get("package") or f.get("Package") or
+            f.get("tier") or f.get("Tier") or ""
+        )
+
+        qf  = (f.get("quickFilters")  or f.get("QuickFilters")  or
+               f.get("tags")          or f.get("Tags")          or "")
+        pkg = (f.get("package")       or f.get("Package")       or
+               f.get("packageName")   or f.get("PackageName")   or "")
 
         if not name:
             continue
