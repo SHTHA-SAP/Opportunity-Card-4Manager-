@@ -1,0 +1,2872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Opportunity Card Manager</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+/* ================================================================
+   ROOT VARIABLES
+================================================================ */
+:root {
+  --navy:          #2A1E68;   /* deep purple — template's dominant dark tone  */
+  --teal-title:    #0099B8;   /* teal for "Opportunity Card" label            */
+  --teal-bar:      #00D4F0;   /* bright cyan for timeline column labels       */
+  --base-bg:       #E4D5F8;   /* light lavender — Base card fill              */
+  --premium-bg:    #BDE8F5;   /* light cyan — Premium card fill               */
+  --card-text:     #2A1E68;   /* dark purple text on cards                    */
+  --icon-purple:   #5B2EA6;   /* medium purple — Joule & AI Features icons    */
+  --icon-navy:     #2A1E68;   /* dark purple — Agents & Custom AI icons       */
+  --dashed:        #AAAAAA;   /* dashed priority-separator lines              */
+  --arrow-top:     #3A2FC0;   /* blue-purple arrowhead (template arrow shade) */
+  --arrow-bot:     #5B68E8;   /* lighter blue-purple arrow shaft bottom       */
+  --page-bg:       #EDE8F7;   /* very subtle lavender page background         */
+  --band-min:      88px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: '72 Brand', 'Segoe UI', Arial, sans-serif;
+  background: var(--page-bg);
+  min-height: 100vh;
+}
+
+/* ================================================================
+   APP HEADER
+================================================================ */
+.app-header {
+  background: var(--navy);
+  color: white;
+  padding: 12px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 10px rgba(0,0,0,.4);
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-pip {
+  width: 9px; height: 9px;
+  background: var(--teal-bar);
+  border-radius: 50%;
+}
+
+.header-brand span {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: .3px;
+}
+
+/* ================================================================
+   BUTTONS
+================================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 15px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 500;
+  transition: opacity .15s, transform .1s;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.btn:hover  { opacity: .87; }
+.btn:active { transform: scale(.97); }
+
+.btn-primary   { background: #5B2EA6; color: white; }
+.btn-secondary { background: rgba(255,255,255,.14); color: white; border: 1px solid rgba(255,255,255,.3); }
+.btn-outline   { background: white; color: var(--navy); border: 1px solid #C4BEE0; }
+.btn-ghost     { background: transparent; color: var(--navy); border: 1px solid #C8C0E0; }
+.btn-danger    { background: #D93025; color: white; }
+.btn-sm        { padding: 5px 11px; font-size: 12px; }
+
+/* ================================================================
+   PROJECTS WRAPPER
+================================================================ */
+.projects-wrap {
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 38px;
+}
+
+/* Empty state */
+.empty-state {
+  margin-top: 70px;
+  text-align: center;
+  padding: 0 32px;
+}
+.empty-state h2 { font-size: 22px; color: var(--navy); margin-bottom: 8px; }
+.empty-state p  { color: #6B7280; font-size: 15px; margin-bottom: 22px; }
+
+/* (legacy .project-block removed — now using home/detail view system) */
+
+.toolbar-left  { display: flex; align-items: center; gap: 8px; }
+.toolbar-right { display: flex; align-items: center; gap: 8px; }
+
+.proj-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--navy);
+  letter-spacing: .4px;
+  text-transform: uppercase;
+}
+
+/* ================================================================
+   OPPORTUNITY CARD  (the downloadable area)
+================================================================ */
+.opportunity-card {
+  background: white;
+  padding: 22px 0 0 0;   /* no left/right padding — elements handle their own */
+  overflow-x: auto;
+}
+
+/* ---- Title ---- */
+.oc-title {
+  text-align: center;
+  margin-bottom: 18px;
+  padding: 0 24px;
+}
+.oc-title h1 {
+  font-size: clamp(22px, 2.4vw, 34px);
+  font-weight: 700;
+  line-height: 1.15;
+}
+.oc-title .proj-name { color: var(--navy); }
+.oc-title .opp-lbl   { color: var(--teal-title); }
+
+/* ---- Body: arrow + grid ---- */
+.oc-body {
+  display: flex;
+  align-items: stretch;
+  min-width: 680px;
+  padding: 0 16px 0 16px;
+}
+
+/* ---- Priority arrow column ---- */
+.p-arrow-col {
+  width: 40px;
+  flex-shrink: 0;
+  margin-right: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.p-arrow-inner {
+  flex: 1;
+  width: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.p-arrowhead {
+  width: 0; height: 0;
+  border-left:  17px solid transparent;
+  border-right: 17px solid transparent;
+  border-bottom: 20px solid var(--arrow-top);
+  flex-shrink: 0;
+}
+
+.p-shaft {
+  flex: 1;
+  width: 34px;
+  min-height: 100px;
+  background: linear-gradient(to bottom, var(--arrow-top), var(--arrow-bot));
+  position: relative;   /* anchor for absolute text */
+  overflow: hidden;
+}
+
+.p-shaft-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  /* centre first, then rotate — no writing-mode needed */
+  transform: translate(-50%, -50%) rotate(-90deg);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ---- Main grid ---- */
+.oc-grid {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Each priority band = horizontal row with 4 cols */
+.p-band {
+  display: flex;
+  min-height: var(--band-min);
+  padding: 10px 0;
+}
+
+.t-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0 6px;
+  min-width: 0;
+  /* subtle column guide */
+  border-right: 1px solid #EDE8F8;
+}
+.t-col:last-child { border-right: none; }
+
+/* Empty band hint  */
+.band-empty-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  color: #D4CEE8;
+  font-size: 11px;
+  font-style: italic;
+  letter-spacing: .3px;
+  padding: 6px 0;
+  pointer-events: none;
+  position: absolute;
+  left: 0;
+}
+.p-band { position: relative; }
+
+/* Dashed separator */
+.dashed-sep {
+  border: none;
+  border-top: 2px dashed var(--dashed);
+  flex-shrink: 0;
+}
+
+/* ---- Use case card ---- */
+.uc-card {
+  border-radius: 6px;
+  padding: 8px 9px 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 50px;
+  position: relative;
+  transition: box-shadow .15s;
+  flex-shrink: 0;
+}
+.uc-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.13); }
+.uc-card.base    { background: var(--base-bg); }
+.uc-card.premium { background: var(--premium-bg); }
+
+.uc-name {
+  font-size: 12.5px;
+  color: var(--card-text);
+  font-weight: 500;
+  line-height: 1.35;
+  min-width: 0;
+}
+
+.uc-icon-wrap {
+  width: 22px; height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.uc-icon-wrap img {
+  width: 22px; height: 22px;
+  display: block;
+}
+
+/* Hover edit/delete */
+.uc-card:hover .uc-actions { display: flex; }
+.uc-actions {
+  display: none;
+  position: absolute;
+  top: 2px; right: 2px;
+  background: rgba(255,255,255,.93);
+  border-radius: 0 4px 0 4px;
+  overflow: hidden;
+}
+.uca-btn {
+  width: 20px; height: 20px;
+  border: none; background: none;
+  cursor: pointer; font-size: 10px; color: #555;
+  display: flex; align-items: center; justify-content: center;
+}
+.uca-btn:hover       { background: #EEE; color: var(--navy); }
+.uca-btn.del:hover   { background: #FDECEA; color: #D93025; }
+
+/* ---- Legend row ---- */
+.legend-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 6px 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.icon-legend {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.il-item {
+  display: flex; align-items: center;
+  gap: 6px;
+}
+.il-item img   { width: 17px; height: 17px; }
+.il-item span  { font-size: 14px; font-weight: 700; color: var(--card-text); }
+
+.type-legend {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+}
+.tl-item {
+  display: flex; align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--card-text);
+}
+.tl-swatch {
+  width: 18px; height: 13px;
+  border-radius: 3px;
+  border: 1px solid rgba(0,0,0,.08);
+}
+.tl-swatch.base    { background: var(--base-bg); }
+.tl-swatch.premium { background: var(--premium-bg); }
+
+/* ---- Timeline bar ---- */
+.timeline-bar {
+  display: flex;
+  background: var(--navy);
+  margin-top: 6px;
+  /* Edge-to-edge — no card padding */
+}
+/* Spacer = body-left-padding(16) + arrow-col(40) + arrow-margin(10) = 66px */
+.tl-spacer { width: 66px; flex-shrink: 0; }
+.tl-labels { flex: 1; display: flex; padding-right: 16px; }
+.tl-lbl {
+  flex: 1;
+  text-align: center;
+  color: var(--teal-bar);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 11px 6px;
+  letter-spacing: .2px;
+  border-right: 1px solid rgba(255,255,255,.12);
+}
+.tl-lbl:last-child { border-right: none; }
+
+/* ================================================================
+   MODALS
+================================================================ */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.46);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+  padding: 16px;
+}
+.overlay.hidden { display: none; }
+
+.modal {
+  background: white;
+  border-radius: 8px;
+  width: 100%; max-width: 460px;
+  box-shadow: 0 10px 50px rgba(0,0,0,.28);
+  overflow: hidden;
+}
+.modal.wide { max-width: 520px; }
+
+.modal-hdr {
+  background: var(--navy);
+  color: white;
+  padding: 13px 17px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-hdr h3  { font-size: 15px; font-weight: 600; }
+.modal-x {
+  background: none; border: none;
+  color: white; cursor: pointer;
+  font-size: 18px; line-height: 1; padding: 2px;
+  opacity: .75;
+}
+.modal-x:hover { opacity: 1; }
+
+.modal-body { padding: 17px 17px 4px; }
+.modal-foot {
+  padding: 12px 17px 15px;
+  display: flex; justify-content: flex-end;
+  gap: 8px; border-top: 1px solid #E0D8F0;
+}
+
+/* Form groups */
+.fg { margin-bottom: 15px; }
+.fg label {
+  display: block;
+  font-size: 12px; font-weight: 600;
+  color: var(--card-text);
+  margin-bottom: 5px;
+}
+
+.fc {
+  width: 100%;
+  padding: 8px 11px;
+  border: 1.5px solid #CCC6E4;
+  border-radius: 4px;
+  font-size: 13px; font-family: inherit;
+  color: var(--card-text);
+  transition: border-color .15s;
+}
+.fc:focus { outline: none; border-color: #5B2EA6; }
+select.fc { cursor: pointer; appearance: auto; }
+
+/* Segmented option buttons */
+.seg { display: flex; gap: 7px; }
+.seg-opt {
+  flex: 1; border: 1.5px solid #CCC6E4;
+  border-radius: 6px; padding: 8px 4px;
+  text-align: center; cursor: pointer;
+  font-size: 12px; font-weight: 600; color: #666;
+  transition: all .15s; user-select: none;
+}
+.seg-opt:hover              { border-color: var(--navy); color: var(--navy); }
+.seg-opt.sel                { border-color: var(--navy); background: var(--navy); color: white; }
+.seg-opt[data-val="1"].sel  { border-color: #B71C1C; background: #B71C1C; }
+.seg-opt[data-val="2"].sel  { border-color: #E65100; background: #E65100; }
+.seg-opt[data-val="3"].sel  { border-color: #1B5E20; background: #1B5E20; }
+
+/* Type selector */
+.type-seg { display: flex; gap: 8px; }
+.type-opt {
+  flex: 1; border: 2px solid #CCC6E4;
+  border-radius: 6px; padding: 11px 8px;
+  text-align: center; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: #666;
+  transition: all .15s; user-select: none;
+}
+.type-opt:hover           { border-color: #888; }
+.type-opt.sel.base        { border-color: #9060D0; background: var(--base-bg); color: var(--card-text); }
+.type-opt.sel.premium     { border-color: #4AA8CC; background: var(--premium-bg); color: var(--card-text); }
+
+/* Icon picker */
+.icon-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.icon-opt {
+  border: 1.5px solid #CCC6E4;
+  border-radius: 6px; padding: 9px 10px;
+  display: flex; align-items: center; gap: 9px;
+  cursor: pointer; font-size: 12px; font-weight: 500;
+  color: #555; transition: all .15s; user-select: none;
+}
+.icon-opt:hover { border-color: var(--navy); color: var(--navy); }
+.icon-opt.sel   { border-color: var(--navy); background: #F0EBFC; color: var(--navy); }
+.icon-opt img   { width: 22px; height: 22px; }
+
+/* ================================================================
+   DOWNLOAD FORMAT OVERLAY
+================================================================ */
+.fmt-modal {
+  background: white;
+  border-radius: 8px;
+  padding: 22px 20px;
+  width: 100%; max-width: 290px;
+  box-shadow: 0 10px 50px rgba(0,0,0,.28);
+  text-align: center;
+}
+.fmt-modal h3 { color: var(--navy); font-size: 16px; margin-bottom: 5px; }
+.fmt-modal p  { color: #6B7280; font-size: 13px; margin-bottom: 18px; }
+.fmt-btns { display: flex; gap: 10px; justify-content: center; margin-bottom: 12px; }
+.fmt-btn {
+  flex: 1; padding: 14px 10px;
+  border: 2px solid #CCC6E4;
+  border-radius: 8px; background: white;
+  cursor: pointer; font-family: inherit;
+  font-size: 14px; font-weight: 700;
+  color: var(--navy); transition: all .15s;
+}
+.fmt-btn:hover { border-color: var(--navy); background: #F0EBFC; }
+.fmt-ico { font-size: 28px; display: block; margin-bottom: 5px; }
+.fmt-cancel {
+  background: none; border: none;
+  color: #999; font-size: 12px;
+  cursor: pointer; text-decoration: underline;
+  font-family: inherit;
+}
+
+/* ================================================================
+   LOADING SPINNER
+================================================================ */
+.spinner-ov {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 400;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 14px; color: white; font-size: 15px;
+}
+.spinner-ov.hidden { display: none; }
+.sp-ring {
+  width: 44px; height: 44px;
+  border: 4px solid rgba(255,255,255,.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin .75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ================================================================
+   CONFIRM DIALOG
+================================================================ */
+.confirm-modal {
+  background: white; border-radius: 8px;
+  padding: 22px 20px; width: 100%; max-width: 340px;
+  box-shadow: 0 10px 50px rgba(0,0,0,.28);
+}
+.confirm-modal h3 { color: var(--navy); font-size: 15px; margin-bottom: 8px; }
+.confirm-modal p  { color: #555; font-size: 13px; margin-bottom: 18px; line-height: 1.5; }
+.confirm-btns { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ================================================================
+   HOME VIEW — Project Tiles
+================================================================ */
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.project-tile {
+  background: white;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  box-shadow: 0 2px 10px rgba(42,30,104,.08);
+  overflow: hidden;
+  transition: border-color .15s, box-shadow .15s, transform .1s;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.project-tile:hover {
+  border-color: var(--navy);
+  box-shadow: 0 4px 18px rgba(42,30,104,.18);
+  transform: translateY(-2px);
+}
+.project-tile.selected {
+  border-color: #5B2EA6;
+  box-shadow: 0 4px 18px rgba(91,46,166,.28);
+}
+
+/* Checkbox shown in select mode */
+.tile-chk-wrap {
+  display: none;
+  position: absolute;
+  top: 10px; left: 12px;
+  z-index: 2;
+}
+.select-mode .tile-chk-wrap { display: block; }
+
+.tile-chk {
+  width: 20px; height: 20px;
+  border: 2px solid #CCC6E4;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+  flex-shrink: 0;
+}
+.tile-chk.on { background: #5B2EA6; border-color: #5B2EA6; }
+.tile-chk.on::after {
+  content: '';
+  width: 5px; height: 9px;
+  border-right: 2px solid white;
+  border-bottom: 2px solid white;
+  transform: rotate(45deg) translate(-1px, -1px);
+  display: block;
+}
+
+/* Colour bar at top: priority breakdown */
+.tile-pbar { height: 5px; display: flex; }
+.tile-ph { background: #C62828; }
+.tile-pm { background: #E65100; }
+.tile-pl { background: #2E7D32; }
+.tile-pe { background: var(--base-bg); flex: 1; }
+
+.tile-body {
+  padding: 16px 18px 10px;
+  flex: 1;
+  cursor: pointer;
+}
+.tile-name {
+  font-size: 16px; font-weight: 700; color: var(--navy);
+  margin-bottom: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tile-sub {
+  font-size: 12px; color: var(--teal-title); font-weight: 500;
+}
+
+.tile-chips {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-top: 10px;
+}
+.chip {
+  font-size: 11px; font-weight: 600;
+  padding: 3px 8px; border-radius: 20px; white-space: nowrap;
+}
+.chip-total  { background: var(--base-bg); color: var(--navy); }
+.chip-high   { background: #FDECEA; color: #C62828; }
+.chip-med    { background: #FFF3E0; color: #E65100; }
+.chip-low    { background: #E8F5E9; color: #2E7D32; }
+
+.tile-foot {
+  display: flex; gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid #EDE8F7;
+}
+
+/* ================================================================
+   DETAIL VIEW
+================================================================ */
+.detail-nav {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 0 20px;
+  flex-wrap: wrap;
+}
+.btn-back {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: none;
+  color: var(--navy); font-size: 13px; font-weight: 600;
+  cursor: pointer; padding: 6px 10px 6px 6px;
+  border-radius: 6px; font-family: inherit;
+  transition: background .15s; white-space: nowrap;
+}
+.btn-back:hover { background: #EDE8F7; }
+.detail-nav-sep { color: #B0A8D8; font-size: 14px; }
+.detail-nav-title {
+  flex: 1; font-size: 14px; font-weight: 600; color: var(--navy);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.detail-nav-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+
+/* ================================================================
+   SELECT MODE BAR (fixed bottom)
+================================================================ */
+.select-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--navy); color: white;
+  padding: 13px 28px;
+  display: flex; align-items: center; gap: 14px;
+  z-index: 150;
+  box-shadow: 0 -4px 18px rgba(0,0,0,.22);
+  flex-wrap: wrap;
+}
+.select-bar.hidden { display: none; }
+.sel-count { font-size: 14px; font-weight: 600; flex: 1; }
+.sel-actions { display: flex; gap: 8px; }
+
+/* (select bar is now inline in project view — no bottom padding needed) */
+
+/* ================================================================
+   SELECT ICON BUTTON (header)
+================================================================ */
+.btn-sel-icon {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 14px; border-radius: 4px;
+  border: 1.5px solid rgba(255,255,255,.38);
+  background: transparent; color: white;
+  cursor: pointer; font-size: 13px; font-weight: 500;
+  font-family: inherit; transition: background .15s;
+  white-space: nowrap;
+}
+.btn-sel-icon:hover { background: rgba(255,255,255,.1); }
+.btn-sel-icon.active { background: #5B2EA6; border-color: #5B2EA6; }
+.btn-sel-icon.hidden { display: none; }
+
+
+/* Project name subtitle in card title */
+.oc-proj-sub {
+  font-size: 13px;
+  color: var(--teal-title);
+  font-weight: 500;
+  margin-top: 2px;
+  letter-spacing: .2px;
+}
+
+
+/* ================================================================
+   MAP BLOCK  (stacked full cards inside a project)
+================================================================ */
+.maps-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.map-block {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 16px rgba(0,0,0,.10);
+  overflow: hidden;
+  border: 2px solid transparent;
+  transition: border-color .15s, box-shadow .15s;
+}
+.map-block.selected {
+  border-color: #5B2EA6;
+  box-shadow: 0 4px 18px rgba(91,46,166,.28);
+}
+
+/* Toolbar above each card */
+.map-toolbar {
+  background: #F3F0FA;
+  border-bottom: 1px solid #D8D2EC;
+  padding: 9px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.map-tb-left  { display: flex; align-items: center; gap: 10px; }
+.map-tb-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.map-label {
+  font-size: 12px; font-weight: 700;
+  color: var(--navy); letter-spacing: .4px;
+  text-transform: uppercase;
+}
+
+/* Select checkbox in toolbar — visible only in select mode */
+.map-chk-wrap {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.map-chk {
+  width: 20px; height: 20px;
+  border: 2px solid #CCC6E4; border-radius: 4px;
+  background: white;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s; flex-shrink: 0;
+}
+.map-chk.on { background: #5B2EA6; border-color: #5B2EA6; }
+.map-chk.on::after {
+  content: '';
+  width: 5px; height: 9px;
+  border-right: 2px solid white;
+  border-bottom: 2px solid white;
+  transform: rotate(45deg) translate(-1px,-1px);
+  display: block;
+}
+
+
+/* ================================================================
+   PROJECT VIEW  —  inline selection + download bar
+================================================================ */
+.proj-sel-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 14px;
+  border-bottom: 1px solid #D8D2EC;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.sel-all-wrap {
+  display: inline-flex; align-items: center; gap: 8px;
+  cursor: pointer; user-select: none;
+  padding: 5px 10px 5px 6px;
+  border-radius: 6px;
+  transition: background .15s;
+  font-size: 13px; font-weight: 600; color: var(--navy);
+}
+.sel-all-wrap:hover { background: #EDE8F7; }
+
+.sel-all-chk {
+  width: 20px; height: 20px;
+  border: 2px solid #CCC6E4; border-radius: 4px;
+  background: white;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s; flex-shrink: 0;
+}
+.sel-all-chk.partial { background: #5B2EA6; border-color: #5B2EA6; }
+.sel-all-chk.partial::after {
+  content: ''; width: 10px; height: 2px;
+  background: white; display: block;
+}
+.sel-all-chk.full { background: #5B2EA6; border-color: #5B2EA6; }
+.sel-all-chk.full::after {
+  content: '';
+  width: 5px; height: 9px;
+  border-right: 2px solid white;
+  border-bottom: 2px solid white;
+  transform: rotate(45deg) translate(-1px,-1px);
+  display: block;
+}
+
+.sel-count-txt {
+  font-size: 13px; color: #6B7280;
+  white-space: nowrap;
+}
+.sel-count-txt.has-sel { color: var(--navy); font-weight: 600; }
+
+.sel-spacer { flex: 1; }
+
+.sel-dl-btn:disabled { opacity: .38; cursor: not-allowed; }
+
+
+/* ================================================================
+   USE CASE SEARCH  (modal autocomplete)
+================================================================ */
+.uc-search-wrap { position: relative; }
+
+.uc-search-results {
+  position: absolute;
+  top: 100%; left: 0; right: 0;
+  background: white;
+  border: 1.5px solid #B8B0DC;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  z-index: 300;
+  max-height: 240px;
+  overflow-y: auto;
+  box-shadow: 0 6px 18px rgba(0,0,0,.14);
+}
+.uc-search-results.hidden { display: none; }
+
+.ucsr-item {
+  padding: 9px 13px;
+  cursor: pointer;
+  border-bottom: 1px solid #F0EBF8;
+  transition: background .1s;
+}
+.ucsr-item:last-child { border-bottom: none; }
+.ucsr-item:hover,
+.ucsr-item:focus { background: #F0EBFC; outline: none; }
+.ucsr-name { font-size: 13px; font-weight: 600; color: var(--navy); }
+.ucsr-meta { font-size: 11px; color: #6B7280; margin-top: 2px; }
+
+.uc-applied-row {
+  display: flex; align-items: center; gap: 8px;
+  background: #F0EBFC; border-radius: 6px;
+  padding: 7px 11px; margin-bottom: 10px; flex-wrap: wrap;
+}
+.uc-applied-row.hidden { display: none; }
+.uc-applied-txt { font-size: 12px; color: #5B2EA6; font-weight: 500; flex: 1; }
+.uc-applied-prod { font-size: 11px; color: #7C6BAE; }
+.uc-clear-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: 11px; color: #9991BB; text-decoration: underline;
+  font-family: inherit; padding: 0;
+}
+.uc-clear-btn:hover { color: var(--navy); }
+
+.uc-desc-box {
+  background: #F8F6FE;
+  border: 1.5px solid #CCC6E4;
+  border-radius: 4px;
+  padding: 8px 11px;
+  font-size: 12px; color: #5A4E82;
+  line-height: 1.5; font-style: italic;
+}
+
+/* ================================================================
+   USE CASE CARD  — name + description layout
+================================================================ */
+.uc-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* .uc-name inherits same look — no flex:1 (moved to .uc-text) */
+
+.uc-desc {
+  font-size: 10px;
+  color: rgba(42,30,104,.50);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+
+/* ================================================================
+   PASSWORD PROTECTION OVERLAY
+================================================================ */
+.pw-overlay {
+  position: fixed; inset: 0;
+  background: rgba(42,30,104,.92);
+  z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(6px);
+  padding: 16px;
+}
+.pw-overlay.hidden { display: none; }
+
+.pw-box {
+  background: white;
+  border-radius: 10px;
+  width: 100%; max-width: 380px;
+  box-shadow: 0 16px 60px rgba(0,0,0,.35);
+  overflow: hidden;
+  animation: pw-pop .25s ease-out;
+}
+@keyframes pw-pop {
+  from { transform: scale(.92); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+.pw-hdr {
+  background: var(--navy);
+  padding: 18px 22px;
+  text-align: center;
+}
+.pw-hdr-pip {
+  width: 10px; height: 10px;
+  background: var(--teal-bar);
+  border-radius: 50%;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+.pw-hdr h2 {
+  color: white; font-size: 18px; font-weight: 700;
+  margin: 0; letter-spacing: .3px;
+}
+.pw-hdr p {
+  color: rgba(255,255,255,.65); font-size: 12px;
+  margin-top: 4px;
+}
+
+.pw-body {
+  padding: 24px 22px 20px;
+  text-align: center;
+}
+.pw-body label {
+  display: block; text-align: left;
+  font-size: 12px; font-weight: 600;
+  color: var(--card-text); margin-bottom: 6px;
+}
+
+.pw-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 2px solid #CCC6E4;
+  border-radius: 6px;
+  font-size: 15px; font-family: inherit;
+  color: var(--card-text);
+  text-align: center;
+  letter-spacing: 4px;
+  transition: border-color .15s;
+  outline: none;
+}
+.pw-input:focus { border-color: #5B2EA6; }
+.pw-input.error {
+  border-color: #D93025;
+  animation: pw-shake .35s ease-in-out;
+}
+@keyframes pw-shake {
+  0%,100% { transform: translateX(0); }
+  20%     { transform: translateX(-8px); }
+  40%     { transform: translateX(8px); }
+  60%     { transform: translateX(-5px); }
+  80%     { transform: translateX(5px); }
+}
+
+.pw-error-msg {
+  color: #D93025; font-size: 12px; font-weight: 500;
+  margin-top: 6px; min-height: 18px;
+}
+
+.pw-submit {
+  display: block; width: 100%;
+  margin-top: 14px; padding: 11px;
+  background: #5B2EA6; color: white;
+  border: none; border-radius: 6px;
+  font-size: 14px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  transition: opacity .15s;
+}
+.pw-submit:hover { opacity: .88; }
+.pw-submit:active { transform: scale(.98); }
+
+/* Blur the page content when locked */
+body.page-locked .app-header,
+body.page-locked #projects-wrap,
+body.page-locked .select-bar {
+  filter: blur(12px);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ================================================================
+   SAP LOGO + FOOTER WATERMARK  (in opportunity card)
+================================================================ */
+.oc-sap-logo {
+  position: absolute;
+  top: 10px; left: 14px;
+  width: 60px; height: auto;
+  z-index: 2;
+}
+.opportunity-card { position: relative; }
+
+.oc-footer {
+  background: #F5F5F5;
+  padding: 10px 24px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #888888;
+  letter-spacing: .5px;
+  border-top: 1px solid #E0E0E0;
+}
+
+/* ================================================================
+   FIREBASE SYNC STATUS INDICATOR
+================================================================ */
+.sync-indicator {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; color: rgba(255,255,255,.6);
+  margin-left: 8px;
+}
+.sync-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #4CAF50;
+  transition: background .3s;
+}
+.sync-dot.syncing { background: #FFC107; }
+.sync-dot.offline { background: #999; }
+
+/* ================================================================
+   PRESENCE INDICATORS  (colored outlines + name tags on maps)
+================================================================ */
+.map-block.presence-active {
+  border-width: 3px;
+  border-style: solid;
+  transition: border-color .3s, box-shadow .3s;
+}
+
+.presence-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: 10px;
+}
+
+.presence-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px 2px 6px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  white-space: nowrap;
+  animation: presence-fade-in .3s ease-out;
+}
+
+.presence-tag .presence-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: white;
+  opacity: .7;
+  animation: presence-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes presence-fade-in {
+  from { opacity: 0; transform: scale(.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes presence-pulse {
+  0%, 100% { opacity: .5; }
+  50%      { opacity: 1; }
+}
+
+/* Current user badge in header */
+.user-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,.12);
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 20px; padding: 4px 12px 4px 8px;
+  font-size: 12px; color: white; font-weight: 500;
+}
+.user-badge-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+
+</style>
+</head>
+<body>
+
+<!-- ================================================================
+     PASSWORD PROTECTION
+================================================================ -->
+<div class="pw-overlay" id="pw-overlay">
+  <div class="pw-box">
+    <div class="pw-hdr">
+      <div class="pw-hdr-pip"></div>
+      <h2>Opportunity Card Manager</h2>
+      <p>Enter password to access</p>
+    </div>
+    <div class="pw-body">
+      <label for="pw-name-input">Your Name</label>
+      <input class="pw-input" id="pw-name-input" type="text"
+             placeholder="Enter your name"
+             maxlength="30"
+             style="letter-spacing:normal;text-align:left;margin-bottom:14px"
+             onkeydown="if(event.key==='Enter')document.getElementById('pw-input').focus()"
+             autocomplete="off">
+      <label for="pw-input">Password</label>
+      <input class="pw-input" id="pw-input" type="password"
+             placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;"
+             maxlength="10"
+             onkeydown="if(event.key==='Enter')checkPassword()"
+             autocomplete="off">
+      <div class="pw-error-msg" id="pw-error"></div>
+      <button class="pw-submit" onclick="checkPassword()">Unlock</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================
+     APP HEADER
+================================================================ -->
+<header class="app-header">
+  <div class="header-brand">
+    <div class="brand-pip"></div>
+    <span>Opportunity Card Manager</span><span class="sync-indicator"><span class="sync-dot offline" id="sync-dot"></span><span id="sync-label">Local only</span></span>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span class="user-badge" id="user-badge" style="display:none">
+      <span class="user-badge-dot" id="user-badge-dot"></span>
+      <span id="user-badge-name"></span>
+    </span>
+    <button class="btn btn-secondary" onclick="openProjectModal()">&#43; Add New Project</button>
+  </div>
+</header>
+
+<!-- ================================================================
+     PROJECTS CONTAINER
+================================================================ -->
+<main class="projects-wrap" id="projects-wrap"></main>
+
+<!-- ================================================================
+     MODALS
+================================================================ -->
+
+<!-- Add / Edit Project -->
+<div class="overlay hidden" id="proj-overlay">
+  <div class="modal">
+    <div class="modal-hdr">
+      <h3 id="proj-modal-title">New Project</h3>
+      <button class="modal-x" onclick="closeModal('proj-overlay')">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg">
+        <label>Project Name</label>
+        <input class="fc" id="proj-name-input" type="text" placeholder="e.g. Cosumar" maxlength="60">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('proj-overlay')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveProject()">Save Project</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Use Case -->
+<div class="overlay hidden" id="uc-overlay">
+  <div class="modal wide">
+    <div class="modal-hdr">
+      <h3 id="uc-modal-title">Add Use Case</h3>
+      <button class="modal-x" onclick="closeModal('uc-overlay')">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Solution filter -->
+      <div class="fg" style="margin-bottom:10px">
+        <label>Filter by SAP Solution <span style="font-weight:400;color:#9991BB">(optional)</span></label>
+        <select class="fc" id="uc-solution-filter" onchange="onUcFilter(this.value)">
+          <option value="">All Solutions</option>
+        </select>
+      </div>
+
+      <!-- Search / name row -->
+      <div class="fg" style="margin-bottom:4px">
+        <label>Use Case Name</label>
+        <div class="uc-search-wrap">
+          <input class="fc" id="uc-name-input" type="text"
+                 placeholder="Search SAP AI catalog or enter a custom name"
+                 maxlength="80"
+                 oninput="onUcSearch(this.value)"
+                 onfocus="onUcSearch(this.value)"
+                 onblur="setTimeout(hideUcResults,160)"
+                 autocomplete="off">
+          <div class="uc-search-results hidden" id="uc-search-results"></div>
+        </div>
+      </div>
+
+      <!-- Applied catalog badge -->
+      <div class="uc-applied-row hidden" id="uc-applied-row">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="7" cy="7" r="6.5" fill="#5B2EA6"/>
+          <path d="M4 7l2 2 4-4" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="uc-applied-txt">Auto-filled from SAP catalog</span>
+        <span class="uc-applied-prod" id="uc-applied-prod"></span>
+        <button class="uc-clear-btn" onclick="clearUcApplied()">Clear</button>
+      </div>
+
+      <!-- Description preview (from catalog) -->
+      <div class="fg" id="uc-desc-row">
+        <label>Description <span style="font-weight:400;color:#9991BB">(shown on card)</span></label>
+        <textarea class="fc" id="uc-desc-preview" rows="2"
+                  placeholder="Optional — describe this use case in one sentence..."
+                  style="resize:vertical;line-height:1.45"></textarea>
+      </div>
+
+      <div class="fg">
+        <label>Priority</label>
+        <div class="seg" id="priority-seg">
+          <div class="seg-opt" data-val="1" onclick="selectSeg('priority-seg',this)">
+            &#9650; 1 &mdash; High
+          </div>
+          <div class="seg-opt" data-val="2" onclick="selectSeg('priority-seg',this)">
+            &#9654; 2 &mdash; Medium
+          </div>
+          <div class="seg-opt" data-val="3" onclick="selectSeg('priority-seg',this)">
+            &#9660; 3 &mdash; Low
+          </div>
+        </div>
+      </div>
+
+      <div class="fg">
+        <label>Implementation Timeline</label>
+        <div class="seg" id="timeline-seg">
+          <div class="seg-opt" data-val="quickWins"  onclick="selectSeg('timeline-seg',this)">Quick Wins</div>
+          <div class="seg-opt" data-val="shortTerm"  onclick="selectSeg('timeline-seg',this)">Short-term</div>
+          <div class="seg-opt" data-val="midTerm"    onclick="selectSeg('timeline-seg',this)">Mid-term</div>
+          <div class="seg-opt" data-val="longTerm"   onclick="selectSeg('timeline-seg',this)">Long-term</div>
+        </div>
+      </div>
+
+      <div class="fg">
+        <label>Card Type</label>
+        <div class="type-seg" id="type-seg">
+          <div class="type-opt base" data-val="base" onclick="selectType(this)">
+            Base
+          </div>
+          <div class="type-opt premium" data-val="premium" onclick="selectType(this)">
+            Premium
+          </div>
+        </div>
+      </div>
+
+      <div class="fg">
+        <label>Icon</label>
+        <div class="icon-grid" id="icon-grid">
+          <div class="icon-opt" data-val="joule"      onclick="selectIcon(this)">
+            <img id="ico-prev-joule"      src="" alt="Joule"> Joule
+          </div>
+          <div class="icon-opt" data-val="aiFeatures" onclick="selectIcon(this)">
+            <img id="ico-prev-aiFeatures" src="" alt="AI Features"> AI Features
+          </div>
+          <div class="icon-opt" data-val="agents"     onclick="selectIcon(this)">
+            <img id="ico-prev-agents"     src="" alt="Agents"> Agents
+          </div>
+          <div class="icon-opt" data-val="customAI"   onclick="selectIcon(this)">
+            <img id="ico-prev-customAI"   src="" alt="Custom AI"> Custom AI
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('uc-overlay')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUseCase()">Save Use Case</button>
+    </div>
+  </div>
+</div>
+
+<!-- Download format chooser -->
+<div class="overlay hidden" id="fmt-overlay">
+  <div class="fmt-modal">
+    <h3>Download Project</h3>
+    <p>Choose the file format</p>
+    <div class="fmt-btns">
+      <button class="fmt-btn" onclick="execDownload('jpg')">
+        <span class="fmt-ico">&#128444;</span>JPG
+      </button>
+      <button class="fmt-btn" onclick="execDownload('pdf')">
+        <span class="fmt-ico">&#128196;</span>PDF
+      </button>
+    </div>
+    <button class="fmt-cancel" onclick="closeModal('fmt-overlay')">Cancel</button>
+  </div>
+</div>
+
+<!-- Confirm delete -->
+<div class="overlay hidden" id="confirm-overlay">
+  <div class="confirm-modal">
+    <h3 id="confirm-title">Confirm Delete</h3>
+    <p id="confirm-msg">Are you sure?</p>
+    <div class="confirm-btns">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('confirm-overlay')">Cancel</button>
+      <button class="btn btn-danger btn-sm" id="confirm-ok-btn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Map -->
+<div class="overlay hidden" id="map-overlay">
+  <div class="modal">
+    <div class="modal-hdr">
+      <h3 id="map-modal-title">New Map</h3>
+      <button class="modal-x" onclick="closeModal('map-overlay')">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg">
+        <label>Map Name</label>
+        <input class="fc" id="map-name-input" type="text"
+               placeholder="e.g. Phase 1 – Core Finance" maxlength="60">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('map-overlay')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMap()">Save Map</button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading spinner -->
+<div class="spinner-ov hidden" id="spinner">
+  <div class="sp-ring"></div>
+  <span id="spinner-msg">Generating...</span>
+</div>
+
+
+<!-- Firebase SDK for real-time shared state -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+<!-- ================================================================
+     JAVASCRIPT
+================================================================ -->
+<script>
+/* ================================================================
+   SVG ICON DEFINITIONS
+================================================================ */
+
+/* ================================================================
+   PASSWORD PROTECTION
+================================================================ */
+const SITE_PASSWORD = '546203';
+
+/* Presence colour palette — each user gets a unique colour */
+const PRESENCE_COLORS = [
+  '#5B2EA6','#0099B8','#E65100','#2E7D32','#C62828',
+  '#1565C0','#AD1457','#00838F','#EF6C00','#6A1B9A',
+  '#00695C','#D84315','#283593','#558B2F','#4E342E'
+];
+let _currentUserName  = '';
+let _currentUserColor = '';
+let _currentUserId    = '';
+let _presenceRef      = null;
+let _presenceData     = {};  /* mapId -> { userId: { name, color } } */
+
+function _generateUserId() {
+  return 'u_' + Date.now().toString(36) + Math.random().toString(36).substr(2,4);
+}
+
+function _pickColor(userId) {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) hash = ((hash << 5) - hash) + userId.charCodeAt(i);
+  return PRESENCE_COLORS[Math.abs(hash) % PRESENCE_COLORS.length];
+}
+
+function checkPassword() {
+  const nameInp = document.getElementById('pw-name-input');
+  const inp     = document.getElementById('pw-input');
+  const err     = document.getElementById('pw-error');
+  const name    = (nameInp.value || '').trim();
+  const val     = inp.value.trim();
+
+  if (!name) {
+    err.textContent = 'Please enter your name.';
+    nameInp.classList.add('error');
+    setTimeout(() => nameInp.classList.remove('error'), 400);
+    nameInp.focus();
+    return;
+  }
+
+  if (val === SITE_PASSWORD) {
+    _currentUserId    = _generateUserId();
+    _currentUserName  = name;
+    _currentUserColor = _pickColor(_currentUserId);
+
+    sessionStorage.setItem('opp_card_unlocked', '1');
+    sessionStorage.setItem('opp_card_user_name', name);
+    sessionStorage.setItem('opp_card_user_id', _currentUserId);
+
+    document.getElementById('pw-overlay').classList.add('hidden');
+    document.body.classList.remove('page-locked');
+    inp.classList.remove('error');
+    err.textContent = '';
+
+    _showUserBadge();
+    _initPresence();
+  } else {
+    inp.classList.add('error');
+    err.textContent = 'Incorrect password. Please try again.';
+    setTimeout(() => inp.classList.remove('error'), 400);
+    inp.value = '';
+    inp.focus();
+  }
+}
+
+function _showUserBadge() {
+  const existing = document.getElementById('user-badge');
+  if (existing) existing.remove();
+  const hdr = document.querySelector('.app-header > div:last-child');
+  if (!hdr || !_currentUserName) return;
+  const badge = document.createElement('span');
+  badge.id = 'user-badge';
+  badge.className = 'user-badge';
+  badge.innerHTML = `<span class="user-badge-dot" style="background:${_currentUserColor}"></span>${_currentUserName}`;
+  hdr.insertBefore(badge, hdr.firstChild);
+}
+
+/* On load: check if already unlocked this session */
+(function() {
+  if (sessionStorage.getItem('opp_card_unlocked') === '1') {
+    document.getElementById('pw-overlay').classList.add('hidden');
+    _currentUserName  = sessionStorage.getItem('opp_card_user_name') || 'User';
+    _currentUserId    = sessionStorage.getItem('opp_card_user_id') || _generateUserId();
+    _currentUserColor = _pickColor(_currentUserId);
+    _showUserBadge();
+  } else {
+    document.body.classList.add('page-locked');
+    setTimeout(() => document.getElementById('pw-name-input').focus(), 150);
+  }
+})();
+
+/* ================================================================
+   FIREBASE CONFIGURATION  (for real-time shared state)
+   ---------------------------------------------------------------
+   HOW TO SET UP:
+   1. Go to https://console.firebase.google.com/
+   2. Create a new project (free tier)
+   3. Go to Build > Realtime Database > Create Database
+   4. Choose "Start in test mode" (or set rules to allow read/write)
+   5. Go to Project Settings > General > Your apps > Add web app
+   6. Copy the config values below
+   ---------------------------------------------------------------
+   If FIREBASE_CONFIG.apiKey is empty, the app falls back to
+   localStorage (single-browser only, no sharing).
+================================================================ */
+const FIREBASE_CONFIG = {
+  apiKey:            "",   // e.g. "AIzaSyB..."
+  authDomain:        "",   // e.g. "my-project.firebaseapp.com"
+  databaseURL:       "",   // e.g. "https://my-project-default-rtdb.firebaseio.com"
+  projectId:         "",   // e.g. "my-project"
+  storageBucket:     "",
+  messagingSenderId: "",
+  appId:             ""
+};
+
+let _firebaseReady = false;
+let _dbRef         = null;
+let _syncDotEl     = null;
+let _ignoreNextFirebaseUpdate = false;
+
+function initFirebase() {
+  if (!FIREBASE_CONFIG.apiKey || !FIREBASE_CONFIG.databaseURL) {
+    console.log('[Sync] Firebase not configured — using localStorage only.');
+    return;
+  }
+  try {
+    const app = firebase.initializeApp(FIREBASE_CONFIG);
+    const db  = firebase.database();
+    _dbRef    = db.ref('opp_card_state');
+    _firebaseReady = true;
+
+    /* Listen for remote changes */
+    _dbRef.on('value', (snapshot) => {
+      if (_ignoreNextFirebaseUpdate) { _ignoreNextFirebaseUpdate = false; return; }
+      const data = snapshot.val();
+      if (data && data.projects) {
+        state = data;
+        /* Also cache locally */
+        localStorage.setItem('opp_card_state_v3', JSON.stringify(state));
+        render();
+        _setSyncStatus('synced');
+      }
+    });
+
+    console.log('[Sync] Firebase connected — changes will sync in real time.');
+    _setSyncStatus('synced');
+
+    /* Initialize presence if already authenticated */
+    if (_currentUserId) _initPresence();
+
+  } catch(e) {
+    console.warn('[Sync] Firebase init failed:', e);
+    _firebaseReady = false;
+  }
+}
+
+/* ================================================================
+   PRESENCE TRACKING  (who is viewing which map)
+================================================================ */
+function _initPresence() {
+  if (!_firebaseReady || !_currentUserId) return;
+
+  const db = firebase.database();
+  _presenceRef = db.ref('presence');
+
+  /* Clean up on disconnect */
+  const myRef = _presenceRef.child(_currentUserId);
+  myRef.onDisconnect().remove();
+
+  /* Set initial presence (no map yet) */
+  myRef.set({
+    name:  _currentUserName,
+    color: _currentUserColor,
+    mapId: null,
+    ts:    firebase.database.ServerValue.TIMESTAMP
+  });
+
+  /* Listen for all presence changes */
+  _presenceRef.on('value', (snap) => {
+    const all = snap.val() || {};
+    _presenceData = {};  /* rebuild: mapId -> [{ userId, name, color }] */
+    const now = Date.now();
+
+    Object.entries(all).forEach(([uid, info]) => {
+      /* Skip stale entries (> 5 min) and self for outline purposes */
+      if (!info || !info.mapId) return;
+      if (info.ts && (now - info.ts) > 300000) return; /* 5 min stale */
+
+      if (!_presenceData[info.mapId]) _presenceData[info.mapId] = [];
+      _presenceData[info.mapId].push({
+        userId: uid,
+        name:   info.name || 'Unknown',
+        color:  info.color || '#5B2EA6',
+        isSelf: uid === _currentUserId
+      });
+    });
+
+    _applyPresenceIndicators();
+  });
+
+  /* Heartbeat every 60s to keep timestamp fresh */
+  setInterval(() => {
+    if (_firebaseReady && _currentUserId) {
+      _presenceRef.child(_currentUserId).update({
+        ts: firebase.database.ServerValue.TIMESTAMP
+      });
+    }
+  }, 60000);
+
+  /* Clean up on page unload */
+  window.addEventListener('beforeunload', () => {
+    if (_presenceRef && _currentUserId) {
+      _presenceRef.child(_currentUserId).remove();
+    }
+  });
+}
+
+/* Track which map the user is currently viewing/editing */
+function _setPresenceMap(mapId) {
+  if (!_firebaseReady || !_currentUserId || !_presenceRef) return;
+  _presenceRef.child(_currentUserId).update({
+    mapId: mapId || null,
+    ts:    firebase.database.ServerValue.TIMESTAMP
+  });
+}
+
+/* Apply coloured outlines + name tags to map blocks in the DOM */
+function _applyPresenceIndicators() {
+  /* Clear all existing indicators */
+  document.querySelectorAll('.map-block.presence-active').forEach(el => {
+    el.classList.remove('presence-active');
+    el.style.borderColor = '';
+    el.style.boxShadow   = '';
+  });
+  document.querySelectorAll('.presence-tags').forEach(el => el.remove());
+
+  /* Apply for each map that has viewers */
+  Object.entries(_presenceData).forEach(([mapId, users]) => {
+    const others = users.filter(u => !u.isSelf);
+    if (others.length === 0) return;
+
+    const block = document.getElementById('block-' + mapId);
+    if (!block) return;
+
+    /* Use first other user's colour for the border */
+    const borderColor = others[0].color;
+    block.classList.add('presence-active');
+    block.style.borderColor = borderColor;
+    block.style.boxShadow   = `0 0 12px ${borderColor}33`;
+
+    /* Add name tags to the toolbar */
+    const toolbar = block.querySelector('.map-tb-left');
+    if (!toolbar) return;
+
+    const tagsDiv = document.createElement('div');
+    tagsDiv.className = 'presence-tags';
+
+    others.forEach(u => {
+      const tag = document.createElement('span');
+      tag.className = 'presence-tag';
+      tag.style.background = u.color;
+      tag.innerHTML = `<span class="presence-dot"></span>${u.name}`;
+      tagsDiv.appendChild(tag);
+    });
+
+    toolbar.appendChild(tagsDiv);
+  });
+}
+
+function _setSyncStatus(status) {
+  if (!_syncDotEl) _syncDotEl = document.getElementById('sync-dot');
+  if (!_syncDotEl) return;
+  _syncDotEl.className = 'sync-dot' +
+    (status === 'syncing' ? ' syncing' : status === 'offline' ? ' offline' : '');
+  const label = document.getElementById('sync-label');
+  if (label) {
+    label.textContent = status === 'syncing' ? 'Syncing...'
+                      : status === 'synced'  ? 'Synced'
+                      : 'Local only';
+  }
+}
+
+/* ================================================================
+   SAP LOGO (inline SVG data URI)
+================================================================ */
+const SAP_LOGO_SVG = `data:image/svg+xml;base64,` + btoa(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92.7 46.3">
+  <path fill="#0070F2" d="M0 0h92.7v46.3H0z"/>
+  <path fill="#fff" d="M20.2 32.4c-3.2 0-6-1-8-2.8l3.2-3.8c1.5 1.2 3.1 1.9 4.9 1.9 1.5 0 2.3-.6 2.3-1.5v0c0-1-.6-1.4-3.5-2.2-3.5-1-5.7-2-5.7-5.7v0c0-3.4 2.7-5.6 6.5-5.6 2.7 0 5 .9 6.9 2.4l-2.8 4c-1.5-1-2.9-1.7-4.2-1.7-1.4 0-2.1.6-2.1 1.4v0c0 1.1.7 1.5 3.7 2.3 3.5 1 5.5 2.3 5.5 5.6v0c0 3.7-2.8 5.7-6.8 5.7zM36.8 13.3h-5.2l-8.5 19h5.6l1.4-3.6h8.3l1.4 3.6h5.7l-8.5-19h-.2zm-4.7 11.3l2.2-5.6 2.2 5.6h-4.4zM46.6 13.3v19h5.4v-5.8h4.7c4.1 0 7.4-2.2 7.4-6.6v0c0-4-2.9-6.6-7.1-6.6h-10.3zm5.4 4.7h4.4c1.6 0 2.5.9 2.5 2.2v0c0 1.4-1 2.2-2.5 2.2h-4.4v-4.4z"/>
+</svg>`);
+
+
+const SVG = {
+  joule:      'data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgOTYuMjEgOTYuMjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIGlkPSJMYXllcl8yIiBvdmVyZmxvdz0iaGlkZGVuIj48ZGVmcz48L2RlZnM+PGcgaWQ9Ikljb25zXzE2cHgiPjxnIGlkPSJkYS0yIj48cmVjdCB4PSIwIiB5PSIwIiB3aWR0aD0iOTYuMjEiIGhlaWdodD0iOTYuMjEiIGZpbGw9IiM2MjMwRjciIG9wYWNpdHk9IjAiLz48cGF0aCBkPSJNOTUuMzcgMjguNTYgNzcuMzMgMi4xQzc2LjQzIDAuNzkgNzQuOTUgMCA3My4zNiAwTDI1LjI2IDBDMjMuNzcgMCAyMi4zNiAwLjY5IDIxLjQ1IDEuODdMMSAyOC4zM0MtMC4zIDMwLjAyLTAuMzQgMzIuMzUgMC45IDM0LjA4TDQ0LjE5IDk0LjIxQzQ1LjA5IDk1LjQ3IDQ2LjU1IDk2LjIxIDQ4LjEgOTYuMjEgNDkuNjUgOTYuMjEgNTEuMSA5NS40NyA1Mi4wMSA5NC4yMUw5NS4zIDM0LjA4Qzk2LjQ4IDMyLjQ0IDk2LjUxIDMwLjIzIDk1LjM3IDI4LjU2Wk03MC43NCAzNS4wN0M2NC4yMiAzNy4yNyA2MS4zMiA0MC4xNyA1OS4xMSA0Ni42OSA1OC40NyA0OC41OCA1NS43OCA0OC41OCA1NS4xNCA0Ni42OSA1Mi45MyA0MC4xNyA1MC4wNCAzNy4yNyA0My41MSAzNS4wNyA0MS42MiAzNC40MyA0MS42MiAzMS43MiA0My41MSAzMS4wOCA1MC4wMyAyOC44OCA1Mi45MyAyNS45OCA1NS4xNCAxOS40NiA1NS43OCAxNy41NyA1OC40NyAxNy41NyA1OS4xMSAxOS40NiA2MS4zMiAyNS45OCA2NC4yMSAyOC44OCA3MC43NCAzMS4wOCA3Mi42MyAzMS43MiA3Mi42MyAzNC40MyA3MC43NCAzNS4wN1oiIGZpbGw9IiM2MjMwRjciLz48L2c+PC9nPjwvc3ZnPg==',
+  aiFeatures: 'data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgOTYuMjEgOTYuMjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIGlkPSJMYXllcl8yIiBvdmVyZmxvdz0iaGlkZGVuIj48ZGVmcz48L2RlZnM+PGcgaWQ9Ikljb25zXzE2cHgiPjxnIGlkPSJhaSI+PHJlY3QgeD0iMCIgeT0iMCIgd2lkdGg9Ijk2LjIxIiBoZWlnaHQ9Ijk2LjIxIiBmaWxsPSIjNUMzNkZGIiBvcGFjaXR5PSIwIi8+PHBhdGggZD0iTTk0LjUgMjAuNDRDODYuNjcgMjMuMDkgODMuMTkgMjYuNTcgODAuNTUgMzQuMzkgNzkuNzggMzYuNjYgNzYuNTYgMzYuNjYgNzUuNzkgMzQuMzkgNzMuMTQgMjYuNTYgNjkuNjYgMjMuMDggNjEuODQgMjAuNDQgNTkuNTcgMTkuNjcgNTkuNTcgMTYuNDIgNjEuODQgMTUuNjYgNjkuNjcgMTMuMDEgNzMuMTUgOS41MyA3NS43OSAxLjcxIDc2LjU2LTAuNTYgNzkuNzgtMC41NiA4MC41NSAxLjcxIDgzLjIgOS41NCA4Ni42OCAxMy4wMiA5NC41IDE1LjY2IDk2Ljc3IDE2LjQzIDk2Ljc3IDE5LjY4IDk0LjUgMjAuNDRaTTYyLjk2IDU4Ljc4QzQ4LjYyIDUzLjk0IDQyLjI1IDQ3LjU2IDM3LjQgMzMuMjMgMzUuOTkgMjkuMDcgMzAuMDkgMjkuMDcgMjguNjggMzMuMjMgMjMuODMgNDcuNTYgMTcuNDYgNTMuOTQgMy4xMiA1OC43OC0xLjA1IDYwLjE5LTEuMDUgNjYuMTQgMy4xMiA2Ny41NCAxNy40NiA3Mi4zOCAyMy44MyA3OC43NiAyOC42OCA5My4wOSAzMC4wOSA5Ny4yNSAzNS45OSA5Ny4yNSAzNy40IDkzLjA5IDQyLjI1IDc4Ljc2IDQ4LjYyIDcyLjM4IDYyLjk2IDY3LjU0IDY3LjEzIDY2LjEzIDY3LjEzIDYwLjE4IDYyLjk2IDU4Ljc4WiIgZmlsbD0iIzVDMzZGRiIvPjwvZz48L2c+PC9zdmc+',
+  agents:     'data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgOTYuMjEgOTYuMjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIGlkPSJMYXllcl8yIiBvdmVyZmxvdz0iaGlkZGVuIj48ZGVmcz48L2RlZnM+PGcgaWQ9Ikljb25zXzE2cHgiPjxnIGlkPSJoYWNrZXIiPjxyZWN0IHg9IjAiIHk9IjAiIHdpZHRoPSI5Ni4yMSIgaGVpZ2h0PSI5Ni4yMSIgZmlsbD0iIzVDMzZGRiIgb3BhY2l0eT0iMCIvPjxwYXRoIGQ9Ik02NC4yNSA0Ny43OUM2NS4wMyA0Ny4xMyA2NS43NSA0Ni4zNSA2Ni40NyA0NS41IDY5LjI3IDQyLjE5IDcwLjk0IDM4LjE2IDcxLjY0IDMzLjkyTDcyLjc4IDMzLjkyQzc1LjU2IDMzLjg5IDc3LjgxIDMxLjc2IDc3LjgxIDI5LjE0IDc3LjgxIDI2LjUyIDc1LjUzIDI0LjM2IDcyLjcyIDI0LjM2TDY2LjE2IDI0LjM2IDY1Ljc4IDE2LjIyQzY1Ljc4IDEwLjYzIDYxLjIzIDYuMDggNTUuNjQgNi4wOCA1NS4xNSA2LjA4IDUxLjQ2IDYuMTUgNDcuODggOC4wNiA0NC42OCA2LjMgNDEuNjggNi4wOCA0MC4yNCA2LjA4IDM0LjY4IDYuMDggMzAuMTcgMTAuNiAzMC4xNyAxNS45OUwyOS43OCAyNC4zNiAyMy40NiAyNC4zNkMyMC42NiAyNC4zNiAxOC4zOCAyNi41MSAxOC4zOCAyOS4xNCAxOC4zOCAzMS43NyAyMC42NiAzMy45MiAyMy40NiAzMy45MkwyNC40OCAzMy45MkMyNS4zOCAzOS4zNiAyOCA0NC4yMyAzMS45NCA0Ny43OCAyMC4yMSA1My4zNyAxMi4wNCA2NS40IDEyLjA0IDc5LjI5TDEyLjA0IDg1LjNDMTIuMDQgODcuOTUgMTQuMiA5MC4xMSAxNi44NSA5MC4xMUw3OS4zMyA5MC4xMUM4MS45OCA5MC4xMSA4NC4xNCA4Ny45NSA4NC4xNCA4NS4zTDg0LjE0IDc5LjI5Qzg0LjE0IDY1LjQgNzYuMDIgNTMuMzcgNjQuMjQgNDcuNzhaTTM5LjgxIDE2LjE2QzM5LjgxIDE1Ljg1IDQwLjA3IDE1LjU5IDQwLjU2IDE1LjU5IDQwLjU4IDE1LjU5IDQyLjgxIDE1LjYzIDQ0Ljg4IDE3LjQ4IDQ2Ljg0IDE5LjIyIDQ5Ljg2IDE5LjA0IDUxLjU5IDE3LjEgNTIuNjkgMTUuOSA1NS4wNSAxNS42IDU1Ljc3IDE1LjU5IDU2LjEgMTUuNTkgNTYuMzUgMTUuODYgNTYuMzUgMTYuMzhMNTYuNzIgMjQuMyAzOS40MyAyNC4zIDM5LjgxIDE2LjE1Wk0zNC4zNiAzMy45MyA2Mi4wMiAzMy45M0M2MS40NyAzNS44OCA2MC41MyAzNy43MSA1OS4xOSAzOS4zMSA1Ni40MiA0Mi41NiA1Mi40IDQ0LjQyIDQ4LjEzIDQ0LjQyIDQxLjU3IDQ0LjQyIDM2LjA1IDM5Ljk1IDM0LjMyIDMzLjkzTDM0LjM2IDMzLjkzWk03NC41OSA4MC41NiAyMS42OCA4MC41NiAyMS42OCA3OS4zNkMyMS42OCA2NS40MSAzMi45OCA1NC4xIDQ2Ljk0IDU0LjFMNDkuMzUgNTQuMUM2My4zIDU0LjEgNzQuNjEgNjUuNCA3NC42MSA3OS4zNkw3NC42MSA4MC41NloiIGZpbGw9IiM1QzM2RkYiLz48L2c+PC9nPjwvc3ZnPg==',
+  customAI:   'data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgOTYuMjEgOTYuMjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIGlkPSJMYXllcl8yIiBvdmVyZmxvdz0iaGlkZGVuIj48ZGVmcz48L2RlZnM+PGcgaWQ9Ikljb25zXzE2cHgiPjxnIGlkPSJhY3Rpb24tc2V0dGluZ3MiPjxyZWN0IHg9IjAiIHk9IjAiIHdpZHRoPSI5Ni4yMSIgaGVpZ2h0PSI5Ni4yMSIgZmlsbD0iIzVDMzZGRiIgb3BhY2l0eT0iMCIvPjxwYXRoIGQ9Ik01MS40MyA5Ni4yMSA0NC43NyA5Ni4yMUM0MC4xOCA5Ni4yMSAzNi4xOCA5Mi45NyAzNS4yNiA4OC41TDM0LjAxIDgyLjQxIDI1LjcxIDc3LjUyIDE5Ljc4IDc5Ljc5QzE1LjA4IDgxLjY0IDkuODEgNzkuNjUgNy41NCA3NS4xN0w0LjA0IDY4LjNDMS45MSA2NC4xMSAzLjEyIDU5LjA0IDYuOTIgNTYuMjRMMTEuNDggNTIuODggMTEuNDggNDMuMjhDMTEuNDggNDMuMjggNi45MiAzOS45NCA2LjkyIDM5Ljk0IDMuMTMgMzcuMTUgMS45MSAzMi4wOCA0LjA0IDI3Ljg5TDcuNTIgMjEuMDVDOS43OCAxNi41OSAxNS4yIDE0LjU5IDE5Ljg2IDE2LjQ4TDI1LjU4IDE4LjggMzMuOTkgMTMuNzkgMzUuMjUgNy42OEMzNi4xNiAzLjIxIDQwLjE2LTAuMDMgNDQuNzYtMC4wM0w1MS40Mi0wLjAzQzU2LjAyLTAuMDMgNjAuMDIgMy4yMSA2MC45MyA3LjY4TDYyLjE3IDEzLjc5IDcwLjQ3IDE4Ljc4IDc2LjMyIDE2LjQ2QzgwLjk4IDE0LjU2IDg2LjQgMTYuNTcgODguNjYgMjEuMDNMOTIuMTQgMjcuODZDOTQuMjcgMzIuMDQgOTMuMDYgMzcuMTEgODkuMjcgMzkuOTFMODQuNzEgNDMuMjcgODQuNzEgNTIuODdDODQuNzEgNTIuODcgODkuMjcgNTYuMjEgODkuMjcgNTYuMjEgOTMuMDYgNTkuMDEgOTQuMjcgNjQuMDggOTIuMTQgNjguMjZMODguNjQgNzUuMTRDODYuMzcgNzkuNjEgODEuMTEgODEuNiA3Ni40IDc5Ljc1TDcwLjYgNzcuNDcgNjIuMTcgODIuMzcgNjAuOTMgODguNDVDNjAuMDEgOTIuOTMgNTYuMDEgOTYuMTcgNTEuNDIgOTYuMTdaTTI1LjYzIDY3Ljg4QzI3LjM2IDY3Ljg4IDI5LjA5IDY4LjM0IDMwLjYxIDY5LjIzTDM4LjkgNzQuMTJDNDEuMjUgNzUuNTEgNDIuOTEgNzcuODMgNDMuNDUgODAuNDhMNDQuNyA4Ni41NyA1MS40NCA4Ni41OSA1Mi43NiA4MC40OUM1My4zMSA3Ny44MiA1NC45NyA3NS41MSA1Ny4zMSA3NC4xMkw2NS42MSA2OS4yMkM2OC4yMSA2Ny42OSA3MS4zMiA2Ny40NCA3NC4xNCA2OC41NEw3OS45NCA3MC44MiA4My41OSA2My45MiA3OS4wMyA2MC42MUM3Ni41OCA1OC44MSA3NS4xMiA1NS45MiA3NS4xMiA1Mi44OUw3NS4xMiA0My4yN0M3NS4xMiA0MC4yNCA3Ni41OCAzNy4zNiA3OS4wMyAzNS41NUw4My41OCAzMi4xOSA4MC4xMSAyNS40MSA3NC4yNCAyNy43MkM3MS40IDI4Ljg3IDY4LjE0IDI4LjYyIDY1LjUyIDI3LjA0TDU3LjIzIDIyLjA0QzU0LjkzIDIwLjY1IDUzLjMgMTguMzUgNTIuNzYgMTUuNzNMNTEuNTIgOS42MiA0NC43NyA5LjYyQzQ0Ljc3IDkuNjIgNDQuNjkgOS42MiA0NC42OSA5LjYyTDQzLjQ0IDE1LjczQzQyLjkgMTguMzUgNDEuMjcgMjAuNjUgMzguOTggMjIuMDNMMzAuNyAyNy4wM0MyOC4wOCAyOC42MSAyNC44MiAyOC44NyAyMS45NyAyNy43MUwxNi4yNSAyNS4zOSAxMi42MiAzMi4yNCAxNy4xOSAzNS41NUMxOS42NCAzNy4zNSAyMS4xIDQwLjI0IDIxLjEgNDMuMjdMMjEuMSA1Mi44OUMyMS4xIDU1LjkyIDE5LjY0IDU4LjggMTcuMTkgNjAuNjFMMTIuNjMgNjMuOTcgMTYuMTIgNzAuNzkgMjIuMDYgNjguNTNDMjMuMiA2OC4wOCAyNC40MSA2Ny44NiAyNS42MiA2Ny44NlpNMzkuOTcgOC42NyA0MC4wMyA4LjY3IDM5Ljk3IDguNjdaTTQ4LjEgNjYuMTRDMzguMTUgNjYuMTQgMzAuMDYgNTguMDUgMzAuMDYgNDguMSAzMC4wNiAzOC4xNSAzOC4xNSAzMC4wNiA0OC4xIDMwLjA2IDU4LjA1IDMwLjA2IDY2LjE0IDM4LjE1IDY2LjE0IDQ4LjEgNjYuMTQgNTguMDUgNTguMDUgNjYuMTQgNDguMSA2Ni4xNFpNNDguMSAzOS42OUM0My40NiAzOS42OSAzOS42OCA0My40NyAzOS42OCA0OC4xMSAzOS42OCA1Mi43NSA0My40NiA1Ni41MyA0OC4xIDU2LjUzIDUyLjc0IDU2LjUzIDU2LjUyIDUyLjc1IDU2LjUyIDQ4LjExIDU2LjUyIDQzLjQ3IDUyLjc0IDM5LjY5IDQ4LjEgMzkuNjlaIiBmaWxsPSIjNUMzNkZGIi8+PC9nPjwvZz48L3N2Zz4='
+};
+
+const ICON_URI = SVG;
+
+function populateIconPreviews() {
+  Object.keys(SVG).forEach(k => {
+    const el = document.getElementById('ico-prev-' + k);
+    if (el) el.src = ICON_URI[k];
+  });
+}
+
+/* ================================================================
+   USE CASE CATALOG  (415 entries — SAP AI Feature Discovery Center)
+================================================================ */
+const UC_CATALOG = [{"name":"Joule with SAP Intelligent Clinical Supply Management","product":"SAP Intelligent Clinical Supply Management","desc":"Streamline navigational and informational tasks with Joule.","type":"base","icon":"joule"},{"name":"Predictive Subject Dynamics","product":"SAP Intelligent Clinical Supply Management","desc":"Predict patient enrollment and dropouts for accurate clinical supply planning.","type":"base","icon":"aiFeatures"},{"name":"Accounts Receivable","product":"SAP Cash Application","desc":"Automate clearing and recommending proposed matches by accounts receivable.","type":"base","icon":"aiFeatures"},{"name":"Role-based Process Overview","product":"SAP Signavio Process Collaboration Hub","desc":"Get a personalized view of key processes, tools, and content for your role.","type":"base","icon":"aiFeatures"},{"name":"Issue Resolution Guidance","product":"SAP Quality Issue Resolution","desc":"Find similar processes using past cases and bundle them for efficiency.","type":"base","icon":"aiFeatures"},{"name":"Error Resolution","product":"SAP Advanced Financial Closing","desc":"Resolve errors identified during financial close processes.","type":"base","icon":"aiFeatures"},{"name":"Request Assistant","product":"Concur Request","desc":"Estimate costs when planning business trips.","type":"base","icon":"aiFeatures"},{"name":"Person Insights for Compensation Discussions","product":"SAP SuccessFactors Employee Central","desc":"Generate insights into an employee's compensation.","type":"base","icon":"joule"},{"name":"Subject Line Generator","product":"SAP Engagement Cloud","desc":"Context-driven generation of email subject lines.","type":"base","icon":"aiFeatures"},{"name":"Personalization Rules","product":"SAP Engagement Cloud","desc":"Tailor the recommended product set to your business needs.","type":"base","icon":"aiFeatures"},{"name":"Product Finder","product":"SAP Engagement Cloud","desc":"Find and insert products into emails using AI-powered search.","type":"base","icon":"aiFeatures"},{"name":"Email Campaign Duplication","product":"SAP Engagement Cloud","desc":"Enable marketers to copy an existing campaign.","type":"base","icon":"joule"},{"name":"Report Builder","product":"SAP Engagement Cloud","desc":"Flexible reporting with generative AI.","type":"base","icon":"aiFeatures"},{"name":"AI Scores","product":"SAP Engagement Cloud","desc":"Build customer segments powered by AI.","type":"base","icon":"aiFeatures"},{"name":"Send Time Optimization","product":"SAP Engagement Cloud","desc":"Optimize sending time of your email campaigns.","type":"base","icon":"aiFeatures"},{"name":"SOW Worker Role Recommendations","product":"SAP Fieldglass Services Procurement","desc":"Generate AI-driven worker role recommendations based on your SOW context.","type":"base","icon":"aiFeatures"},{"name":"SOW Deliverables Creation","product":"SAP Fieldglass Services Procurement","desc":"Create precise and relevant SOW deliverables based on project scope.","type":"base","icon":"aiFeatures"},{"name":"SOW Description Creation","product":"SAP Fieldglass Services Procurement","desc":"Simplify SOW collaboration with AI-enhanced descriptions.","type":"base","icon":"aiFeatures"},{"name":"Performance Preparation Agent","product":"Performance Preparation Agent","desc":"Provide managers data-driven insights before 1:1 with employees.","type":"base","icon":"agents"},{"name":"Joule with SAP Order Management Services","product":"SAP Order Management Services","desc":"Streamline key operational tasks using natural language.","type":"base","icon":"joule"},{"name":"Recommended Material Groups","product":"SAP Ariba Buying","desc":"Get material group recommendations based on product name and description.","type":"base","icon":"aiFeatures"},{"name":"Catalog Item Recommendations","product":"SAP Ariba Buying","desc":"Suggest products and services based on users' past purchases.","type":"base","icon":"aiFeatures"},{"name":"Popular Items","product":"SAP Ariba Buying","desc":"Discover popular items in your company's catalog.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP BTP, Kyma runtime","product":"SAP BTP, Kyma runtime","desc":"Assistant to help with getting started, troubleshoot issues, and more.","type":"base","icon":"joule"},{"name":"Central Governance","product":"SAP S/4HANA Cloud for master data governance, private edition","desc":"Streamline master data governance tasks using natural language.","type":"base","icon":"joule"},{"name":"Forecast Results Analysis","product":"SAP Integrated Business Planning","desc":"Explain the forecast outcome and recommend ways to improve accuracy.","type":"base","icon":"aiFeatures"},{"name":"Supply Optimization Analysis","product":"SAP Integrated Business Planning","desc":"Summarize insights, analyze, explain the time-series optimization planning run.","type":"base","icon":"joule"},{"name":"Outlier Job Detection","product":"SAP Integrated Business Planning","desc":"Detect jobs that are taking longer or shorter than expected.","type":"base","icon":"aiFeatures"},{"name":"Automatic Outlier Correction","product":"SAP Integrated Business Planning","desc":"Automatically detect and correct outliers in time series data.","type":"base","icon":"aiFeatures"},{"name":"Machine Learning Alerts","product":"SAP Integrated Business Planning","desc":"Prevent supply chain issues before they happen.","type":"base","icon":"aiFeatures"},{"name":"Analysis of Inventory Optimization Results","product":"SAP Integrated Business Planning","desc":"Analyze safety stock output and support root cause analysis.","type":"base","icon":"aiFeatures"},{"name":"Curve Based Forecasting","product":"SAP Integrated Business Planning","desc":"Create reliable predictions when historical data is sparse or incomplete.","type":"base","icon":"aiFeatures"},{"name":"Lead Time Master Data Management","product":"SAP Integrated Business Planning","desc":"Detect and manage changes in dynamic master data, specifically lead time.","type":"base","icon":"aiFeatures"},{"name":"Add-in for Microsoft Excel, AI-assisted Planning","product":"SAP Integrated Business Planning","desc":"AI-Assisted generation of SAP IBP formulas.","type":"base","icon":"aiFeatures"},{"name":"AI-Assisted Forecasting","product":"SAP Integrated Business Planning","desc":"Generate forecasts for scenarios or areas of your business.","type":"base","icon":"aiFeatures"},{"name":"System Security Check","product":"SAP Integrated Business Planning","desc":"Assess SAP IBP system configurations against security recommendations.","type":"base","icon":"joule"},{"name":"Master Data Consistency","product":"SAP Integrated Business Planning","desc":"Discover patterns in your master data.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Integrated Business Planning","product":"SAP Integrated Business Planning","desc":"Get quick answers based on product documentation.","type":"base","icon":"joule"},{"name":"Demand Sensing","product":"SAP Integrated Business Planning","desc":"Create optimized daily forecasts for multiple products based on demand.","type":"base","icon":"aiFeatures"},{"name":"MRO Inventory Analysis","product":"SAP Integrated Business Planning","desc":"Analyze safety stock and reorder outputs to support root cause analysis.","type":"base","icon":"aiFeatures"},{"name":"CONTRL-Message Explanation","product":"SAP Market Communication for Utilities","desc":"Simplifies error analysis for CONTRL-message in the German energy market.","type":"base","icon":"aiFeatures"},{"name":"Booking Agent","product":"Booking Agent","desc":"Streamline trip planning for business travelers.","type":"premium","icon":"agents"},{"name":"Joule with SAP Fieldglass solutions","product":"SAP Fieldglass solutions","desc":"Enhance efficiencies across hiring processes with AI in SAP Fieldglass.","type":"base","icon":"joule"},{"name":"Enterprise Content Research Agent","product":"Enterprise Content Research Agent","desc":"Accelerating and simplifying enterprise content search and analysis.","type":"base","icon":"agents"},{"name":"Account Matching","product":"SAP Returnable Packaging Management","desc":"Account matching and forecasting of packaging demand.","type":"base","icon":"aiFeatures"},{"name":"AI-Assisted Forecasting","product":"SAP Returnable Packaging Management","desc":"Create forecast for packaging demand.","type":"base","icon":"aiFeatures"},{"name":"Joule with UI theme designer","product":"UI Theme Designer","desc":"Help users ask questions related to theming.","type":"base","icon":"joule"},{"name":"Joule with SAP Multi-Bank Connectivity","product":"SAP Multi-Bank Connectivity","desc":"Get quick answers about SAP Multi-Bank Connectivity from product documentation.","type":"base","icon":"joule"},{"name":"Successor Recommendation","product":"SAP SuccessFactors Succession & Development","desc":"View recommended successors based on skills, competencies, and experience.","type":"base","icon":"aiFeatures"},{"name":"Content Creation and Summary","product":"SAP Build Work Zone, advanced edition","desc":"Generate, summarize & comment with AI to increase content creation efficiency.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Logistics Management","product":"SAP Logistics Management","desc":"Simplify warehouse and transportation planning operations with natural language.","type":"base","icon":"joule"},{"name":"ALM Dashboard Generation Agent","product":"Dashboard Generation Agent","desc":"Create new graphical cards with SAP Cloud ALM data.","type":"base","icon":"agents"},{"name":"ERP Configuration for Finance","product":"Concur Invoice","desc":"Auto-import and map liability account codes from your accounting system.","type":"base","icon":"aiFeatures"},{"name":"Invoice Capture","product":"Concur Invoice","desc":"Eliminate the hassle of paper invoices and speed up accounts payable processes.","type":"base","icon":"aiFeatures"},{"name":"Mistral on SAP Business AI Platform","product":"Mistral on SAP Business AI Platform","desc":"Mistral Vibe & Studio, hosted on SAP Business AI Platform.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Business Accelerator Hub","product":"SAP Business Accelerator Hub","desc":"Find relevant prebuilt content using Joule with natural language search.","type":"base","icon":"joule"},{"name":"Document Grounding","product":"Document Grounding","desc":"Add context to Joule Q&A using information retrieved from custom documents.","type":"base","icon":"joule"},{"name":"Joule with Concur solutions","product":"Concur solutions","desc":"Get smart support to minimize errors and simplify expense submission.","type":"base","icon":"joule"},{"name":"E-mail Draft Recommender","product":"SAP Enterprise Service Management","desc":"Generate e-mail drafts based on past interactions via AI.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Enterprise Service Management","product":"SAP Enterprise Service Management","desc":"Provide service agents instant access to customer, supplier, and employee info.","type":"base","icon":"joule"},{"name":"Case Type Determination","product":"SAP Enterprise Service Management","desc":"Determine the case type during the conversion of email to case.","type":"base","icon":"aiFeatures"},{"name":"Case Categorization","product":"SAP Enterprise Service Management","desc":"Automate the case categorization process.","type":"base","icon":"aiFeatures"},{"name":"Document Extraction","product":"SAP Enterprise Service Management","desc":"Extract automatically relevant information from attachments.","type":"base","icon":"aiFeatures"},{"name":"NLP Classification","product":"SAP Enterprise Service Management","desc":"Identify sentiment from emails.","type":"base","icon":"aiFeatures"},{"name":"Machine Translation","product":"SAP Enterprise Service Management","desc":"Use machine translation to translate emails.","type":"base","icon":"aiFeatures"},{"name":"Similar Case Recommendation","product":"SAP Enterprise Service Management","desc":"Find solutions from similar cases from the past and apply to the current case.","type":"base","icon":"aiFeatures"},{"name":"Case Summary","product":"SAP Enterprise Service Management","desc":"Generate Case summary based on email interactions.","type":"base","icon":"aiFeatures"},{"name":"Backend Entity Extraction","product":"SAP Enterprise Service Management","desc":"Extract information and create entities in backends of SAP solutions.","type":"base","icon":"aiFeatures"},{"name":"Case Topic Analyzer","product":"SAP Enterprise Service Management","desc":"View trending topics from cases.","type":"base","icon":"aiFeatures"},{"name":"Profanity Check","product":"SAP Enterprise Service Management","desc":"Define a set of pejorative vocabulary.","type":"base","icon":"aiFeatures"},{"name":"Skill Based Job Posting","product":"SAP Fieldglass Contingent Workforce Management","desc":"AI-powered skill-based hiring for faster, smarter talent matching.","type":"base","icon":"aiFeatures"},{"name":"Experience Assessment","product":"SAP Fieldglass Contingent Workforce Management","desc":"How closely a job seeker's professional background aligns with a job posting.","type":"base","icon":"aiFeatures"},{"name":"Resume Assessment","product":"SAP Fieldglass Contingent Workforce Management","desc":"Evaluate how compatible is a job seeker's resume with a job posting.","type":"base","icon":"aiFeatures"},{"name":"O*NET Labelling","product":"SAP Fieldglass Contingent Workforce Management","desc":"Recommend O*NET codes for job classifications.","type":"base","icon":"aiFeatures"},{"name":"Job Description Translation","product":"SAP Fieldglass Contingent Workforce Management","desc":"Simplify job requirement communication using AI-enhanced translation.","type":"base","icon":"aiFeatures"},{"name":"Job Description Creation","product":"SAP Fieldglass Contingent Workforce Management","desc":"Enhance job description with AI for efficiency and better candidate submissions.","type":"base","icon":"aiFeatures"},{"name":"Project Billing Price Verification Agent","product":"Project Billing Price Verification Agent","desc":"Help billing specialists identify and resolve price discrepancies efficiently.","type":"base","icon":"agents"},{"name":"G/L Line-Item Determination","product":"SAP Ariba Invoicing","desc":"Auto-enrich and complete draft invoices using historical invoice data.","type":"base","icon":"aiFeatures"},{"name":"Multi-Model Data Extraction","product":"SAP Ariba Invoicing","desc":"Leverage generative AI for a reliable invoice processing experience.","type":"base","icon":"aiFeatures"},{"name":"Supplier Invoice File Extraction","product":"SAP Ariba Invoicing","desc":"Enhance data extraction accuracy for complex invoice layouts.","type":"base","icon":"aiFeatures"},{"name":"Digital Service Agent","product":"Digital Service Agent","desc":"Enhance CX with swift, informed, and knowledge-based support.","type":"base","icon":"agents"},{"name":"Writing - translation","product":"SAP SuccessFactors solutions","desc":"Translate written content in supported text areas.","type":"base","icon":"aiFeatures"},{"name":"SAP Document AI, embedded edition","product":"SAP SuccessFactors solutions","desc":"Automated data extraction and import from uploaded National ID documents.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP SuccessFactors solutions","product":"SAP SuccessFactors solutions","desc":"Elevate the employee experience with an AI copilot.","type":"base","icon":"joule"},{"name":"AI-Assisted Writing","product":"SAP SuccessFactors solutions","desc":"Enhance the quality of the content writing in text fields.","type":"base","icon":"aiFeatures"},{"name":"Bulk Translation","product":"SAP SuccessFactors solutions","desc":"Instantly translate preset page content into multiple languages with ease.","type":"base","icon":"aiFeatures"},{"name":"Skills Architecture Creation","product":"SAP SuccessFactors solutions","desc":"Create an AI-based skills library from job profiles.","type":"base","icon":"aiFeatures"},{"name":"Skills Standardization","product":"SAP SuccessFactors solutions","desc":"Use the industry-standard skill names in the Attributes Library.","type":"base","icon":"aiFeatures"},{"name":"Microsoft Teams Chat","product":"SAP SuccessFactors solutions","desc":"Interact using natural language, get to your features and information faster.","type":"base","icon":"aiFeatures"},{"name":"Text Analyzer","product":"SAP SuccessFactors solutions","desc":"Analyze content within supported text areas for bias, safety, and responsibility","type":"base","icon":"aiFeatures"},{"name":"Extended AI Locales","product":"SAP SuccessFactors solutions","desc":"Review, customize, and enable AI-translated locales for use.","type":"base","icon":"aiFeatures"},{"name":"Joule Q&A","product":"SAP SuccessFactors solutions","desc":"Get answers about an organization’s HR policy documents.","type":"base","icon":"joule"},{"name":"Skill Identification from Resume","product":"SAP SuccessFactors solutions","desc":"Identify skills from a resume and display the skills on the Growth Portfolio.","type":"base","icon":"aiFeatures"},{"name":"ESG Report Generation","product":"SAP Sustainability Control Tower","desc":"Generate comprehensive sustainability reports using ESG metrics data.","type":"base","icon":"aiFeatures"},{"name":"Strategy Summarizer","product":"SAP Ariba Category Management","desc":"Generate summaries of category strategy documents.","type":"base","icon":"aiFeatures"},{"name":"Market Dynamics Chart Plotting","product":"SAP Ariba Category Management","desc":"Generate content recommendations based on AI.","type":"base","icon":"aiFeatures"},{"name":"Category Segmentation","product":"SAP Ariba Category Management","desc":"Generate content recommendations based on AI.","type":"base","icon":"aiFeatures"},{"name":"Category Strategy Recommendation","product":"SAP Ariba Category Management","desc":"Accelerate category planning with AI-powered recommendations.","type":"base","icon":"aiFeatures"},{"name":"Cost Structure Creation","product":"SAP Ariba Category Management","desc":"Generate content recommendations based on AI.","type":"base","icon":"aiFeatures"},{"name":"ERP Configuration for Finance","product":"Concur Expense","desc":"Auto-import and map liability account codes from your accounting system.","type":"base","icon":"aiFeatures"},{"name":"Verify","product":"Concur Expense","desc":"Check expense reports to identify errors and compliance issues.","type":"base","icon":"aiFeatures"},{"name":"Approval Manager","product":"Concur Expense","desc":"Streamline approvals with AI insights, risk visibility, and flexible workflows.","type":"base","icon":"aiFeatures"},{"name":"Policy Navigator","product":"Concur Expense","desc":"Provide instant, trusted policy answers with natural language.","type":"base","icon":"joule"},{"name":"Pre-submit Receipt Check","product":"Concur Expense","desc":"Check expenses for receipt issues before submission.","type":"base","icon":"aiFeatures"},{"name":"Hotel Receipt Itemization","product":"Concur Expense","desc":"Automatic itemization of hotel receipts.","type":"base","icon":"aiFeatures"},{"name":"Intelligent Audit","product":"Concur Expense","desc":"Check expense reports to identify errors and compliance issues.","type":"base","icon":"aiFeatures"},{"name":"Configuration for Audit Rules","product":"Concur Expense","desc":"Manage and explain expense audit rules in plain language with an AI assistant.","type":"base","icon":"aiFeatures"},{"name":"Policy Assistance","product":"Concur Expense","desc":"Boost policy awareness and drive compliance with AI-generated policy trip tips.","type":"base","icon":"aiFeatures"},{"name":"Chart of Accounts Upload","product":"Concur Expense","desc":"Automate the import of expense accounts from accounting systems into Concur.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Asset Performance Management","product":"SAP Asset Performance Management","desc":"Get quick answers based on product documentation.","type":"base","icon":"joule"},{"name":"Anomaly Detection","product":"SAP Asset Performance Management","desc":"Identify and monitor unusual patterns or behavior in technical objects.","type":"base","icon":"aiFeatures"},{"name":"Visual Inspection","product":"SAP Asset Performance Management","desc":"Monitor asset conditions from visual inspections.","type":"base","icon":"aiFeatures"},{"name":"Failure Curve Analytics","product":"SAP Asset Performance Management","desc":"Predict probabilities of failures for technical objects.","type":"base","icon":"aiFeatures"},{"name":"Declaration Image Analysis","product":"SAP Green Token","desc":"Automatically extract information from declarations of different formats.","type":"base","icon":"aiFeatures"},{"name":"Deep Research Capability","product":"Joule","desc":"Get tailored business insights combining internal SAP and external web data.","type":"base","icon":"joule"},{"name":"Joule Work desktop app","product":"Joule","desc":"Joule Work desktop brings conversational AI to enterprise knowledge workers.","type":"base","icon":"joule"},{"name":"Joule and Microsoft 365 Copilot","product":"Joule","desc":"Bi-directional integration between Joule and Microsoft 365 Copilot.","type":"base","icon":"joule"},{"name":"Analytical Insights","product":"Joule","desc":"Get analytical insights with natural language from any SAP business application.","type":"base","icon":"joule"},{"name":"AI-Assisted Scouting","product":"SAP Sports One","desc":"Q&A on scouting reports and match reports.","type":"base","icon":"joule"},{"name":"Sales Order Creation","product":"SAP S/4HANA","desc":"Create sales orders from unstructured data.","type":"base","icon":"aiFeatures"},{"name":"Case Classification Agent","product":"Case Classification Agent","desc":"Analyze and classify customer service tickets and cases.","type":"base","icon":"agents"},{"name":"Pinned AI","product":"WalkMe","desc":"Attach helpful AI functionality directly to specific on-screen elements.","type":"base","icon":"aiFeatures"},{"name":"SAP Joule action bar (On-Demand)","product":"WalkMe","desc":"An intelligent overlay that delivers AI on any application - SAP and beyond.","type":"base","icon":"joule"},{"name":"AI Knowledge Indexing","product":"WalkMe","desc":"Make company documentation accessible to WalkMe AI services.","type":"base","icon":"aiFeatures"},{"name":"SAP Joule action bar (Proactive)","product":"WalkMe","desc":"An intelligent overlay that delivers AI on any application - SAP and beyond.","type":"base","icon":"joule"},{"name":"On-Demand AI","product":"WalkMe","desc":"Make company knowledge discoverable everywhere via conversational AI interface.","type":"base","icon":"aiFeatures"},{"name":"AI Knowledge Referencing","product":"WalkMe","desc":"Fetch curated information from company resources when conditions are met.","type":"base","icon":"aiFeatures"},{"name":"Skill Inference for Assignment Creation","product":"SAP SuccessFactors Opportunity Marketplace","desc":"Create and edit assignments using generative AI.","type":"base","icon":"aiFeatures"},{"name":"Assignment Creation","product":"SAP SuccessFactors Opportunity Marketplace","desc":"Create and edit assignments using generative AI.","type":"base","icon":"aiFeatures"},{"name":"Order Reliability Agent","product":"Order Reliability Agent","desc":"Detect and resolve order exceptions for customer service teams.","type":"base","icon":"agents"},{"name":"Generation of SAP Fiori Elements and SAPUI5 Applications","product":"SAP Build Code","desc":"Generate full-stack applications using  natural language in SAP Build Code.","type":"base","icon":"joule"},{"name":"Generation of SAP HANA Applications","product":"SAP Build Code","desc":"Generate SAP HANA applications using natural language in SAP Build Code.","type":"base","icon":"joule"},{"name":"Generation of SAP Mobile Applications","product":"SAP Build Code","desc":"Generate SAP Mobile applications using natural language in SAP Build Code.","type":"base","icon":"joule"},{"name":"Generation of Full-Stack Applications","product":"SAP Build Code","desc":"Generate full-stack applications using natural language in SAP Build Code.","type":"base","icon":"joule"},{"name":"User Learning and Change Management","product":"SAP Micro-App Hub","desc":"Accelerate adoption & reduce costs with AI for user learning lifecycle.","type":"base","icon":"aiFeatures"},{"name":"Material Group Recommendations","product":"SAP Ariba Central Procurement","desc":"Suggest the most relevant material groups based on purchase orders.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Build Work Zone","product":"SAP Build Work Zone","desc":"Interact with SAP apps and Work Zone via natural language for instant actions.","type":"base","icon":"joule"},{"name":"Generation of Operations Automations","product":"SAP Automation Pilot","desc":"Generate DevOps and SRE automation flows based on a simple prompt.","type":"base","icon":"aiFeatures"},{"name":"Unified Demand Forecast Component","product":"SAP Customer Activity Repository","desc":"Forecast consumer demand for products.","type":"base","icon":"aiFeatures"},{"name":"Product Recommendations","product":"SAP Assortment Planning","desc":"Get system-generated product recommendations for your assortment.","type":"base","icon":"aiFeatures"},{"name":"ALM Alert Resolution Agent","product":"ALM Alert Resolution Agent","desc":"Analyze and solve the root cause of alerts in SAP Cloud ALM.","type":"base","icon":"agents"},{"name":"Error Analysis","product":"SAP Traceability Hub, error analysis","desc":"Analyze and resolve errors in serialization data exchange.","type":"base","icon":"aiFeatures"},{"name":"Optimal Order Quantities","product":"SAP Predictive Replenishment","desc":"Optimize order quantities for groups of products according to objectives.","type":"base","icon":"aiFeatures"},{"name":"Code Generator for Custom Logic","product":"SAP Entitlement Management","desc":"Generate JavaScript to change entitlements from user requirement descriptions.","type":"base","icon":"aiFeatures"},{"name":"Process Analyzer, Text To Widget","product":"SAP Signavio solutions","desc":"Generate dashboard widgets with natural language queries.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Signavio solutions","product":"SAP Signavio solutions","desc":"Elevate your organization's process management and optimization.","type":"base","icon":"joule"},{"name":"Process Modeler","product":"SAP Signavio solutions","desc":"Generate a BPMN diagram from a text description or image of a business process.","type":"base","icon":"aiFeatures"},{"name":"Performance Indicators Recommender","product":"SAP Signavio solutions","desc":"Discover metrics relevant for your business.","type":"base","icon":"joule"},{"name":"BPMN Simulation Insights","product":"SAP Signavio solutions","desc":"Transform simulation results into AI-powered insights for faster decisions.","type":"base","icon":"joule"},{"name":"Context Analyzer, Sentiment Analysis","product":"SAP Signavio solutions","desc":"Analyze customer sentiment with AI to reveal process impact and boost loyalty.","type":"base","icon":"aiFeatures"},{"name":"Context Analyzer, Text to Event Matching","product":"SAP Signavio solutions","desc":"Matches free-text entries to process events using AI for actionable insights.","type":"base","icon":"aiFeatures"},{"name":"Content Search","product":"SAP Signavio solutions","desc":"Semantic search engine that interprets user terminology for tailored results.","type":"base","icon":"aiFeatures"},{"name":"Process Analyzer, Text to Insight","product":"SAP Signavio solutions","desc":"Prompt to discover insights from your data.","type":"base","icon":"aiFeatures"},{"name":"Process Recommender","product":"SAP Signavio solutions","desc":"Get instant best practice recommendations.","type":"base","icon":"joule"},{"name":"Transformation Advisory, Initiative Builder","product":"SAP Signavio solutions","desc":"Identify strategy-aligned opportunities and accelerate transformation execution.","type":"base","icon":"aiFeatures"},{"name":"Billing Anomaly Agent","product":"Billing Anomaly Agent","desc":"Identify billing anomalies before creating and sending invoices.","type":"base","icon":"agents"},{"name":"Process Consulting Agent","product":"Process Consulting Agent","desc":"Reason over data and generate actionable insights in natural language.","type":"base","icon":"agents"},{"name":"Intrusion Detection","product":"SAP Customer Data Cloud","desc":"Prosecute malicious activity while ensuring a smooth UX for legitimate users.","type":"base","icon":"aiFeatures"},{"name":"Expense Report Validation Agent","product":"Expense Report Validation Agent","desc":"Get smart support to minimize errors and simplify expense submission.","type":"premium","icon":"agents"},{"name":"Shopping Agent","product":"Shopping Agent","desc":"Transform your online shopping experience with an AI shopping agent.","type":"base","icon":"agents"},{"name":"Tender Analysis Agent","product":"Tender Analysis Agent","desc":"Draft quotes to boost sales efficiency and increase revenue with an agent.","type":"base","icon":"agents"},{"name":"Sourcing Event Agent","product":"Sourcing Event Agent","desc":"Builds sourcing events and RFx documents autonomously.","type":"base","icon":"agents"},{"name":"Contract Creation from Documents","product":"SAP Ariba Contracts","desc":"Parse uploaded contracts, preview extracted data for review before creation.","type":"base","icon":"aiFeatures"},{"name":"Contract Field Recommendations","product":"SAP Ariba Contracts","desc":"AI suggests field values from reliable data to speed up contract completion.","type":"base","icon":"aiFeatures"},{"name":"Contract Creation from Prompts","product":"SAP Ariba Contracts","desc":"Create contracts using natural language prompts.","type":"base","icon":"aiFeatures"},{"name":"Product Specification Search","product":"SAP Integrated Product Development","desc":"Search product specifications using natural language and apply search filters.","type":"base","icon":"aiFeatures"},{"name":"Text Generation","product":"SAP Integrated Product Development","desc":"Help product managers enrich or simplify the text content based on the field.","type":"base","icon":"aiFeatures"},{"name":"2D Hotspot Creation","product":"SAP Integrated Product Development","desc":"Automatically create hotspots on 2D drawings and tag with business data.","type":"base","icon":"joule"},{"name":"Document Summary","product":"SAP Integrated Product Development","desc":"Summarize complex engineering documents for faster insights and decision making.","type":"base","icon":"joule"},{"name":"Joule with  SAP Integrated Product Development","product":"SAP Integrated Product Development","desc":"Joule assisted navigation to SAP Integrated Product Development applications.","type":"base","icon":"joule"},{"name":"Problem Report Creation","product":"SAP Integrated Product Development","desc":"Enable engineers to create structured maintenance reports in natural language.","type":"base","icon":"joule"},{"name":"Lead Intelligence","product":"SAP Sales Cloud Version 2","desc":"Identify open leads that have a high potential of conversion.","type":"base","icon":"aiFeatures"},{"name":"Account Synopsis","product":"SAP Sales Cloud Version 2","desc":"Facilitate targeted and relevant sales conversations.","type":"base","icon":"aiFeatures"},{"name":"Duplicate Detection","product":"SAP Sales Cloud Version 2","desc":"Detect duplicate accounts automatically.","type":"base","icon":"aiFeatures"},{"name":"Deal Intelligence","product":"SAP Sales Cloud Version 2","desc":"Predict if an opportunity can be won or lost.","type":"base","icon":"aiFeatures"},{"name":"E-mail Draft Recommender","product":"SAP Sales Cloud Version 2","desc":"Reduce time to draft responses based on previous interactions.","type":"base","icon":"aiFeatures"},{"name":"Business Text Intelligence","product":"SAP Sales Cloud Version 2","desc":"Get actionable insights for appointments from note texts.","type":"base","icon":"aiFeatures"},{"name":"NLP Classification","product":"SAP Sales Cloud Version 2","desc":"Identify sentiment from emails.","type":"base","icon":"aiFeatures"},{"name":"Sales Order Summary","product":"SAP Sales Cloud Version 2","desc":"Analyze and present insights from pricing simulations in sales orders.","type":"base","icon":"aiFeatures"},{"name":"Survey Trend Summary","product":"SAP Sales Cloud Version 2","desc":"Provide contextual guidance on improving the sales representative’s store visits","type":"base","icon":"aiFeatures"},{"name":"Product Recommendation","product":"SAP Sales Cloud Version 2","desc":"Make quick upselling offers to customers.","type":"base","icon":"aiFeatures"},{"name":"Lead Booster","product":"SAP Sales Cloud Version 2","desc":"Increase lead generation effectiveness.","type":"base","icon":"aiFeatures"},{"name":"Business Interaction Intelligence","product":"SAP Sales Cloud Version 2","desc":"Provides insights for appointments and visits.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Sales Cloud Version 2","product":"SAP Sales Cloud Version 2","desc":"Enable your sales teams to win deals.","type":"base","icon":"joule"},{"name":"Interview Questions Generation","product":"SAP SuccessFactors Recruiting","desc":"Use generative AI to provide interviewers with suggested questions.","type":"base","icon":"aiFeatures"},{"name":"Job Description Enhancement","product":"SAP SuccessFactors Recruiting","desc":"Generate enhanced job descriptions using generative AI.","type":"base","icon":"aiFeatures"},{"name":"Applicant Screening","product":"SAP SuccessFactors Recruiting","desc":"Match the applicant's skills with the ones required for a job.","type":"base","icon":"aiFeatures"},{"name":"Interview Feedback Insights","product":"SAP SuccessFactors Recruiting","desc":"Get insights into interviewer feedback and notes about a given candidate.","type":"base","icon":"aiFeatures"},{"name":"Job Skills on Career Sites","product":"SAP SuccessFactors Recruiting","desc":"Allows to upload a resume on career sites and receive job recommendations.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Ariba solutions","product":"SAP Ariba solutions","desc":"Streamline your informational, navigational, and transactional tasks.","type":"base","icon":"joule"},{"name":"Contract Accounting","product":"SAP Cash Application, add-on for contract accounting","desc":"Automate clearing and recommending proposed matches by accounts receivable.","type":"base","icon":"aiFeatures"},{"name":"Incentive and Payment Insights","product":"SAP Incentive Management","desc":"Get quick answers in natural language to incentive management questions.","type":"base","icon":"joule"},{"name":"Architecture Guidance","product":"SAP LeanIX solutions","desc":"Architecture guidance delivers AI-derived insights and assists taking action.","type":"base","icon":"aiFeatures"},{"name":"Fact Sheet Field Calculations","product":"SAP LeanIX solutions","desc":"Turn plain-language business rules into custom calculations.","type":"base","icon":"aiFeatures"},{"name":"Context Generation","product":"SAP LeanIX solutions","desc":"Provide users with task explanations for better understanding.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP LeanIX","product":"SAP LeanIX solutions","desc":"Search and navigate to the right information through natural language queries.","type":"base","icon":"joule"},{"name":"Translation Support","product":"SAP LeanIX solutions","desc":"Help users translate customized technical terms.","type":"base","icon":"aiFeatures"},{"name":"Automation Creation","product":"SAP LeanIX solutions","desc":"Build automations in SAP LeanIX from plain-English descriptions.","type":"base","icon":"aiFeatures"},{"name":"Inventory Builder","product":"SAP LeanIX solutions","desc":"Upload and analyze data formats to auto-discover architectural elements.","type":"base","icon":"aiFeatures"},{"name":"Enterprise Architecture Decision Management","product":"SAP LeanIX solutions","desc":"Analyze and extract relevant data to generate architecture decisions.","type":"base","icon":"aiFeatures"},{"name":"Inventory Prompts","product":"SAP LeanIX solutions","desc":"Support analyzes of IT application landscapes.","type":"base","icon":"aiFeatures"},{"name":"AI-Assisted Texting","product":"SAP LeanIX solutions","desc":"Simplify and standardize text creation by analyzing content and context.","type":"base","icon":"aiFeatures"},{"name":"Operations Score Optimization","product":"SAP Cloud ALM","desc":"Explain operations scores and prioritise system issues using AI insights.","type":"base","icon":"aiFeatures"},{"name":"Requirement Generation","product":"SAP Cloud ALM","desc":"Generate requirements from meeting notes to improve Fit-to-Standard workshops.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Cloud ALM","product":"SAP Cloud ALM","desc":"Access the main functionalities and agents of SAP Cloud ALM via Joule.","type":"base","icon":"joule"},{"name":"Document Summary","product":"SAP Cloud ALM","desc":"Summarize content of selected document based on AI capability.","type":"base","icon":"aiFeatures"},{"name":"Demand Intake","product":"SAP Ariba Intake Management","desc":"Natural language queries to route queries to correct intake process.","type":"base","icon":"aiFeatures"},{"name":"Workspace","product":"SAP Document AI","desc":"Configure, manage, and analyze SAP Document AI schemas, channels and workflows.","type":"base","icon":"aiFeatures"},{"name":"Embedded Edition","product":"SAP Document AI","desc":"Automate document processing, workflow execution, and channel integration.","type":"base","icon":"aiFeatures"},{"name":"Meeting Planning Agent","product":"Meeting Planning Agent","desc":"Helps executive assistant to organize offsite meetings.","type":"premium","icon":"agents"},{"name":"Receipt Analysis Agent","product":"Receipt Analysis Agent","desc":"ExpenseIt powered by Receipt Analysis Agent accurately extracts receipt data.","type":"premium","icon":"agents"},{"name":"Catalog Optimization Agent","product":"Catalog Optimization Agent","desc":"Optimize product data to boost merchandising accuracy and agility.","type":"base","icon":"agents"},{"name":"Service and Maintenance Dispatching Agent","product":"Service and Maintenance Dispatching Agent","desc":"Autonomously schedule and optimize service orders.","type":"base","icon":"agents"},{"name":"Billing Creation Agent","product":"Billing Creation Agent","desc":"Prioritize the billing due list to speed up invoice creation.","type":"base","icon":"agents"},{"name":"Electronic Document Error Handling","product":"SAP Document and Reporting Compliance","desc":"Get easy-to-understand explanations for electronic document errors with Joule.","type":"base","icon":"joule"},{"name":"Deal Sheet Generation","product":"SAP Revenue Growth Management","desc":"Generate retailer-ready deal sheets from promotion data automatically.","type":"base","icon":"aiFeatures"},{"name":"Trade Promotion Creation","product":"SAP Revenue Growth Management","desc":"Name a promo and AI pre-fills fields faster, compliant and each time.","type":"base","icon":"aiFeatures"},{"name":"Joule with Regulatory Change Manager","product":"Regulatory Change Manager","desc":"Discover and evaluate regulatory updates and maintain compliance.","type":"base","icon":"joule"},{"name":"Document Data Extraction","product":"SAP Build Process Automation","desc":"Extract and process document data from PDFs and images using AI.","type":"base","icon":"aiFeatures"},{"name":"Decision Summarization","product":"SAP Build Process Automation","desc":"Assist users with process automation design by summarizing undocumented rules.","type":"base","icon":"aiFeatures"},{"name":"Process Summarization","product":"SAP Build Process Automation","desc":"Generate business summaries for undocumented process models.","type":"base","icon":"aiFeatures"},{"name":"Form Generation","product":"SAP Build Process Automation","desc":"Generate process automation forms from natural language descriptions.","type":"base","icon":"aiFeatures"},{"name":"Script Task Generation","product":"SAP Build Process Automation","desc":"Generate executable JavaScript codes with natural language.","type":"base","icon":"aiFeatures"},{"name":"Decision Generation","product":"SAP Build Process Automation","desc":"Assist process design by generating decision artifacts.","type":"base","icon":"aiFeatures"},{"name":"Process Generation","product":"SAP Build Process Automation","desc":"Generate process artifacts from natural language to support process automation.","type":"base","icon":"aiFeatures"},{"name":"Process Editing","product":"SAP Build Process Automation","desc":"Support process design with natural language editing for automation artifacts.","type":"base","icon":"aiFeatures"},{"name":"Exception Management","product":"SAP Cell and Gene Therapy Orchestration","desc":"Detect exceptions and create alerts for users.","type":"base","icon":"aiFeatures"},{"name":"Intelligent Filtering","product":"SAP Field Service Management","desc":"Estimate the expected real duration of activities based on time efforts logged.","type":"base","icon":"aiFeatures"},{"name":"Automated Scheduling Analytics","product":"SAP Field Service Management","desc":"Explain SAP Field Service Management auto-scheduling results.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Field Service Management","product":"SAP Field Service Management","desc":"Streamline dispatching processes with Joule.","type":"base","icon":"joule"},{"name":"Predictive Routing","product":"SAP Field Service Management","desc":"Predict realistic driving distances and times.","type":"base","icon":"aiFeatures"},{"name":"Activity Summary","product":"SAP Field Service Management","desc":"Generate summaries of activities.","type":"base","icon":"aiFeatures"},{"name":"Auto-Scheduling","product":"SAP Field Service Management","desc":"Fully automate your planning and streamline your field service operations.","type":"base","icon":"aiFeatures"},{"name":"Assignment Duration Prediction","product":"SAP Field Service Management","desc":"Predict the assignment duration based on historic data.","type":"base","icon":"aiFeatures"},{"name":"Equipment Insights","product":"SAP Field Service Management","desc":"Generate summary based on previous activities for a piece of equipment.","type":"base","icon":"aiFeatures"},{"name":"Mobile Execution","product":"SAP Service and Asset Manager","desc":"Voice-to-text for faster, accurate job reporting in the field.","type":"base","icon":"aiFeatures"},{"name":"Farming Decision Framework","product":"SAP Intelligent Agriculture","desc":"Inject farming decision support just-in-time during farming processes.","type":"base","icon":"aiFeatures"},{"name":"Requirements Processing","product":"SAP Intelligent Product Recommendation","desc":"Extract needs from unstructured text description of customer requirements.","type":"base","icon":"aiFeatures"},{"name":"Utilities Customer Self-Service Agent","product":"Utilities Customer Self-Service Agent","desc":"Reduce customer service costs and improve customer satisfaction.","type":"base","icon":"agents"},{"name":"Skill Builder","product":"Joule Studio","desc":"Extend Joule with skills that fit your unique needs.","type":"base","icon":"joule"},{"name":"Agent Builder","product":"Joule Studio","desc":"Easily build Joule agents to automate complex business processes.","type":"base","icon":"agents"},{"name":"SAP Joule for Developers, ABAP AI capabilities","product":"SAP BTP, ABAP environment","desc":"Accelerate ABAP development with Joule.","type":"base","icon":"joule"},{"name":"Database Administration","product":"SAP HANA Cloud","desc":"AI-powered tool for task simplification and efficiency enhancement.","type":"base","icon":"joule"},{"name":"SAP HANA application migration","product":"SAP HANA Cloud","desc":"Automate SAP HANA XS/XSA service layer migration to SAP CAP using GenAI.","type":"base","icon":"aiFeatures"},{"name":"Product Slotting","product":"SAP Extended Warehouse Management","desc":"Determine product attributes for new products in the warehouse.","type":"base","icon":"aiFeatures"},{"name":"Predictive Labor Demand Planning","product":"SAP Extended Warehouse Management","desc":"Predict planned workload data based on picking and packing outbound processes.","type":"base","icon":"aiFeatures"},{"name":"Compliance Issue Decision Support","product":"SAP Risk and Assurance Management","desc":"Predict the outcome of new compliance issues based on historic decisions.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Risk and Assurance Management","product":"SAP Risk and Assurance Management","desc":"Joule provides intuitive navigation and access to relevant enablement content.","type":"base","icon":"joule"},{"name":"Quote Creation Agent","product":"Quote Creation Agent","desc":"Automate quote generation in SAP Cloud for Customer.","type":"base","icon":"agents"},{"name":"Joule with SAP Business Technology Platform","product":"SAP Business Technology Platform","desc":"Quickly retrieve information about SAP BTP and your accounts with Joule.","type":"base","icon":"joule"},{"name":"Expense Automation Agent","product":"Expense Automation Agent","desc":"Automatically create and populate expense reports for employees.","type":"premium","icon":"agents"},{"name":"AI-Assisted Authoring","product":"SAP Enable Now, cloud edition","desc":"Enrich enablement content automatically with AI support.","type":"base","icon":"aiFeatures"},{"name":"Generation of Integrations","product":"SAP Integration Suite","desc":"Generate integration scenarios using natural language prompts.","type":"base","icon":"aiFeatures"},{"name":"API traffic prediction","product":"SAP Integration Suite","desc":"Identify trends in API calls and predict future API traffic.","type":"base","icon":"aiFeatures"},{"name":"Script Optimization","product":"SAP Integration Suite","desc":"Optimize custom scripts effortlessly.","type":"base","icon":"aiFeatures"},{"name":"Anomaly Detection","product":"SAP Integration Suite","desc":"Identify and respond to unusual patterns or deviations in API traffic.","type":"base","icon":"aiFeatures"},{"name":"SAP Regulatory Insights","product":"SAP Regulatory Insights","desc":"Automate regulatory analysis and compliance gap detection with AI.","type":"base","icon":"aiFeatures"},{"name":"Insights into Detailed 360 Report","product":"SAP SuccessFactors Performance and Goals","desc":"Gain insights into Detailed 360 Report.","type":"base","icon":"aiFeatures"},{"name":"Team Goals","product":"SAP SuccessFactors Performance and Goals","desc":"Build meaningful and inspiring team goals.","type":"base","icon":"aiFeatures"},{"name":"Performance Goal Creation","product":"SAP SuccessFactors Performance and Goals","desc":"Build meaningful and inspiring performance goals.","type":"base","icon":"aiFeatures"},{"name":"Skill Inference for Continuous Performance Mgmt","product":"SAP SuccessFactors Performance and Goals","desc":"Infer skills to employees using Continuous Performance Management data.","type":"base","icon":"aiFeatures"},{"name":"Performance Insights","product":"SAP SuccessFactors Performance and Goals","desc":"Get insights on an employee's performance based on the feedback received.","type":"base","icon":"aiFeatures"},{"name":"Sentiment Analysis in 360 Reviews","product":"SAP SuccessFactors Performance and Goals","desc":"Analyze the sentiment of a feedback delivered in a 360 review.","type":"base","icon":"aiFeatures"},{"name":"Sales Order Creation from Unstructured Data","product":"SAP S/4HANA Cloud Public Edition","desc":"Seamlessly create sales orders from unstructured data.","type":"base","icon":"aiFeatures"},{"name":"KPI and Report Summary","product":"SAP S/4HANA Cloud Public Edition","desc":"Generate summaries for SAP S/4HANA Cloud Generic Drilldown KPIs and reports.","type":"base","icon":"aiFeatures"},{"name":"Aging Work in Progress Analytics and Management","product":"SAP S/4HANA Cloud Public Edition","desc":"Joule aids controllers in tracking WIP aging, insights & actions.","type":"base","icon":"joule"},{"name":"Error Resolution for Cost Accounting","product":"SAP S/4HANA Cloud Public Edition","desc":"Explain errors to the business user and offer smart actions.","type":"base","icon":"joule"},{"name":"Safety Instruction Generation","product":"SAP S/4HANA Cloud Public Edition","desc":"Generate safety instructions grounded on risk assessments.","type":"base","icon":"aiFeatures"},{"name":"Sales Order Creation","product":"SAP S/4HANA Cloud Public Edition","desc":"Create sales orders from unstructured data.","type":"base","icon":"aiFeatures"},{"name":"Expiring Price Handling","product":"SAP S/4HANA Cloud Public Edition","desc":"Quickly detect and update all expiring prices in pricing systems with Joule.","type":"base","icon":"joule"},{"name":"Smart Personalization of My Home","product":"SAP S/4HANA Cloud Public Edition","desc":"Personalize your home page by adding insights cards.","type":"base","icon":"aiFeatures"},{"name":"Analytical Business Insights","product":"SAP S/4HANA Cloud Public Edition","desc":"Quickly analyze, summarize, and turn data into clear insights.","type":"base","icon":"aiFeatures"},{"name":"Managing Supplier Invoices","product":"SAP S/4HANA Cloud Public Edition","desc":"Enable basic actions on supplier invoices.","type":"base","icon":"joule"},{"name":"Back Order Processing","product":"SAP S/4HANA Cloud Public Edition","desc":"Faster, smarter BOP execution powered by intuitive, prompt-driven interactions.","type":"base","icon":"joule"},{"name":"Project Services","product":"SAP S/4HANA Cloud Public Edition","desc":"Manages project tasks through a conversational interface.","type":"base","icon":"joule"},{"name":"Sales Order Automatic Completion","product":"SAP S/4HANA Cloud Public Edition","desc":"Streamline sales order completion with recommendations.","type":"base","icon":"aiFeatures"},{"name":"Payment Exception Analysis","product":"SAP S/4HANA Cloud Public Edition","desc":"Analyze payment exceptions and discover recommended resolutions.","type":"base","icon":"aiFeatures"},{"name":"Error Explanation","product":"SAP S/4HANA Cloud Public Edition","desc":"Generate natural language descriptions and resolutions for error messages.","type":"base","icon":"aiFeatures"},{"name":"Safety Observation Reporting","product":"SAP S/4HANA Cloud Public Edition","desc":"Enable users to report safety observations with natural language.","type":"base","icon":"joule"},{"name":"Supplier Delivery Date Mass Update","product":"SAP S/4HANA Cloud Public Edition","desc":"Perform mass updates of delivery dates for multiple purchase orders with Joule.","type":"base","icon":"joule"},{"name":"Easy Filter","product":"SAP S/4HANA Cloud Public Edition","desc":"Streamline your filtering experience in SAP Fiori elements-based list reports.","type":"base","icon":"aiFeatures"},{"name":"Processing of Incoming Quality Certificates with SAP Document AI","product":"SAP S/4HANA Cloud Public Edition","desc":"Automatically process incoming quality certificate documents.","type":"base","icon":"aiFeatures"},{"name":"Supplier Confirmation Mass Creation","product":"SAP S/4HANA Cloud Public Edition","desc":"Enable mass creation of several supplier confirmations in Joule.","type":"base","icon":"joule"},{"name":"Localized Business Data Management","product":"SAP S/4HANA Cloud Public Edition","desc":"Explore localized financial and logistics data with Joule.","type":"base","icon":"joule"},{"name":"Allocation Run Results","product":"SAP S/4HANA Cloud Public Edition","desc":"View allocation results attributes and navigate to results app.","type":"base","icon":"joule"},{"name":"Compliance Management","product":"SAP S/4HANA Cloud Public Edition","desc":"Enable automatic setup of obligation and relevant data from documents.","type":"base","icon":"aiFeatures"},{"name":"Explanation of Fixed Asset Depreciation Keys","product":"SAP S/4HANA Cloud Public Edition","desc":"Explain depreciation types and calculation procedures in natural language.","type":"base","icon":"aiFeatures"},{"name":"Purchase Order Approvals Reminder","product":"SAP S/4HANA Cloud Public Edition","desc":"Streamline your purchase order approval workflows.","type":"base","icon":"joule"},{"name":"Smart Summarization","product":"SAP S/4HANA Cloud Public Edition","desc":"Jump start your communications or follow-ups by generated text proposals.","type":"base","icon":"aiFeatures"},{"name":"Enterprise Search","product":"SAP S/4HANA Cloud Public Edition","desc":"Search business data with natural language queries in SAP Fiori Launchpad.","type":"base","icon":"aiFeatures"},{"name":"Note Corrections for Project Billing","product":"SAP S/4HANA Cloud Public Edition","desc":"Propose grammatically correct notes for project billing request items.","type":"base","icon":"aiFeatures"},{"name":"Easy Fill","product":"SAP S/4HANA Cloud Public Edition","desc":"Enables users to populate fields of a business object using natural language.","type":"base","icon":"aiFeatures"},{"name":"Creation of Fixed Asset Master Data","product":"SAP S/4HANA Cloud Public Edition","desc":"Facilitate the creation of fixed asset master data with Joule.","type":"base","icon":"joule"},{"name":"SAP Joule for Developers, ABAP AI capabilities","product":"SAP S/4HANA Cloud Public Edition","desc":"Accelerate ABAP development with Joule.","type":"base","icon":"joule"},{"name":"Processing of Payment Advices with SAP Document AI","product":"SAP S/4HANA Cloud Public Edition","desc":"Automate payment-advice processing to reduce errors and manual fixes.","type":"base","icon":"aiFeatures"},{"name":"Task Automation","product":"SAP S/4HANA Cloud Public Edition","desc":"Enables users to create and run automated processes from natural language input.","type":"base","icon":"aiFeatures"},{"name":"Smart Personalization of My Home for Applications","product":"SAP S/4HANA Cloud Public Edition","desc":"Personalize your home page by adding apps.","type":"base","icon":"aiFeatures"},{"name":"Posting Issue Handling for Billing Documents","product":"SAP S/4HANA Cloud Public Edition","desc":"Assist billing clerks to efficiently process billing docs with posting issues.","type":"base","icon":"joule"},{"name":"Form Extension in Localization as a Self-Service","product":"SAP S/4HANA Cloud Public Edition","desc":"Extend localized forms to meet your specific requirements.","type":"base","icon":"aiFeatures"},{"name":"Configuration for US Tax Jurisdictions","product":"SAP S/4HANA Cloud Public Edition","desc":"Simplify tax maintenance for the internal sales & use tax solution for the US.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP S/4HANA Cloud Public Edition","product":"SAP S/4HANA Cloud Public Edition","desc":"Streamline your informational, navigational, and transactional tasks.","type":"base","icon":"joule"},{"name":"Explanation of Fixed Asset Key Figures","product":"SAP S/4HANA Cloud Public Edition","desc":"Better insights into fixed asset key figures using AI-generated explanations.","type":"base","icon":"aiFeatures"},{"name":"Sales Order Status Check","product":"SAP S/4HANA Cloud Public Edition","desc":"Track sales order fulfillment and spot issues blocking completion.","type":"base","icon":"joule"},{"name":"Smart Solution for Situations in My Home","product":"SAP S/4HANA Cloud Public Edition","desc":"Provide resolution suggestions directly on the homepage.","type":"base","icon":"aiFeatures"},{"name":"Development Goal Creation","product":"SAP SuccessFactors Career and Talent Development","desc":"Build meaningful and inspiring development goals.","type":"base","icon":"aiFeatures"},{"name":"Successor Insights","product":"SAP SuccessFactors Career and Talent Development","desc":"Get insights on potential successors to help with succession planning.","type":"base","icon":"aiFeatures"},{"name":"Personalized Opportunities Recommendations","product":"SAP SuccessFactors Career and Talent Development","desc":"Improve assignment and open job recommendations.","type":"base","icon":"aiFeatures"},{"name":"Career Insights","product":"SAP SuccessFactors Career and Talent Development","desc":"Get insights into employees' development actions towards target role.","type":"base","icon":"aiFeatures"},{"name":"Automated Emission Factor Mapping","product":"SAP Sustainability Footprint Management","desc":"Map purchased products and purchased product groups with AI.","type":"base","icon":"aiFeatures"},{"name":"Commodity Work Center","product":"SAP Commodity Management","desc":"Simplifies data entry related to deals for commodity traders.","type":"base","icon":"aiFeatures"},{"name":"Document Processing","product":"SAP Self-Billing Cockpit","desc":"Extract invoice data from files to automate billing in SAP Self-Billing Cockpit.","type":"base","icon":"aiFeatures"},{"name":"Supplier Prediction","product":"SAP Ariba Sourcing","desc":"Suggests suppliers for guided sourcing events based on past similar events.","type":"base","icon":"aiFeatures"},{"name":"Data Anonymization","product":"SAP Data Privacy Integration","desc":"Anonymize unstructured data such as free text, text files, and images.","type":"base","icon":"aiFeatures"},{"name":"Skill Inference for Learning","product":"SAP SuccessFactors Learning","desc":"Associate skills with learning items in bulk through the import process.","type":"base","icon":"aiFeatures"},{"name":"Skills Inference for Open Content Network","product":"SAP SuccessFactors Learning","desc":"Associate skills with Open Content Network (OCN) items.","type":"base","icon":"aiFeatures"},{"name":"Image Generation for Learning","product":"SAP SuccessFactors Learning","desc":"Generate images more easily and effectively with AI-assistance.","type":"base","icon":"aiFeatures"},{"name":"Personalized Learning Recommendations","product":"SAP SuccessFactors Learning","desc":"Get personalized AI-driven learning recommendations based on skills and role.","type":"base","icon":"aiFeatures"},{"name":"Spare Parts Request Processing Agent","product":"Spare Parts Request Processing Agent","desc":"Process spare part requests and trigger creation of sales quotations.","type":"base","icon":"agents"},{"name":"Insights Description Generator","product":"SAP Signavio Process Transformation Manager","desc":"Creating clear, consistent, and business user–friendly descriptions.","type":"base","icon":"aiFeatures"},{"name":"Image Generation","product":"SAP CX AI Toolkit","desc":"Use AI tools for seamless product visual transformation and editing.","type":"base","icon":"aiFeatures"},{"name":"Visual Search","product":"SAP CX AI Toolkit","desc":"Find products in your catalog that match an uploaded image.","type":"base","icon":"aiFeatures"},{"name":"Smart Scheduling","product":"SAP CX AI Toolkit","desc":"Streamline and optimize your calendar management.","type":"base","icon":"aiFeatures"},{"name":"Intelligent Q&A","product":"SAP CX AI Toolkit","desc":"Find answers to work-related questions by analyzing your company's content.","type":"base","icon":"aiFeatures"},{"name":"Product Tagging","product":"SAP CX AI Toolkit","desc":"Extract and enrich your product tags with AI.","type":"base","icon":"aiFeatures"},{"name":"Smart Actions","product":"SAP CX AI Toolkit","desc":"Proactive AI Insights for your emails, meetings, and more.","type":"base","icon":"aiFeatures"},{"name":"Intelligent Customer Profile","product":"SAP CX AI Toolkit","desc":"Harness data from SAP CX to generate a summary that is easy to comprehend.","type":"base","icon":"aiFeatures"},{"name":"Product Descriptions","product":"SAP CX AI Toolkit","desc":"Create personalized product descriptions that enrich your catalog data.","type":"base","icon":"aiFeatures"},{"name":"Knowledge Indexing","product":"SAP CX AI Toolkit","desc":"AI-powered data indexing for features and agents based on SAP CX AI Toolkit.","type":"base","icon":"aiFeatures"},{"name":"Custom AI Tool Builder","product":"SAP CX AI Toolkit","desc":"Create custom​ AI tools for business users​ grounded in SAP data.","type":"base","icon":"aiFeatures"},{"name":"Standard Tools","product":"SAP CX AI Toolkit","desc":"Role specific prompts utilizing CX data to generate discovery questions etc.","type":"base","icon":"aiFeatures"},{"name":"Process Analyzer, Automated Mapping","product":"SAP Signavio Process Intelligence","desc":"Map various inputs based on their context.","type":"base","icon":"aiFeatures"},{"name":"UI Generation from Data","product":"SAP Build Apps","desc":"Automatically generate pages based on integrated data entities.","type":"base","icon":"aiFeatures"},{"name":"AI-Assisted Recommendations","product":"Concur Travel","desc":"Provide flight and car recommendations to users.","type":"base","icon":"aiFeatures"},{"name":"Policy Rule Generator","product":"Concur Travel","desc":"Streamline travel policy setup by auto-generating rules from travel policies.","type":"base","icon":"aiFeatures"},{"name":"Trip Changes","product":"Concur Travel","desc":"Enable seamless trip changes in Joule through simple chat interactions.","type":"base","icon":"joule"},{"name":"Depreciation Key Explanation","product":"SAP S/4HANA Cloud Private Edition","desc":"Explain depreciation types and calculation procedures in natural language.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP S/4HANA Cloud Private Edition","product":"SAP S/4HANA Cloud Private Edition","desc":"Streamline your informational, navigational, and transactional tasks.","type":"base","icon":"joule"},{"name":"Sales Order Fulfillment Monitoring","product":"SAP S/4HANA Cloud Private Edition","desc":"Monitor and resolve order fulfillment issues with AI.","type":"base","icon":"joule"},{"name":"Fixed Asset Key Figures Explanation","product":"SAP S/4HANA Cloud Private Edition","desc":"Understand the explanation of fixed asset key figures in natural language.","type":"base","icon":"aiFeatures"},{"name":"Behavioral Insights for Contract Accounting","product":"SAP S/4HANA Cloud Private Edition","desc":"Analyze historical customer behavior and predict, explain payment risk.","type":"base","icon":"aiFeatures"},{"name":"Goods Receipt Processing","product":"SAP S/4HANA Cloud Private Edition","desc":"Automatically check delivery documents with AI.","type":"base","icon":"aiFeatures"},{"name":"Supplier Delivery Date Prediction","product":"SAP S/4HANA Cloud Private Edition","desc":"Predict delivery dates for purchase order items based on historical data.","type":"base","icon":"aiFeatures"},{"name":"Conversational Planning","product":"SAP S/4HANA Cloud Private Edition","desc":"Carry out planning operations in transportation cockpit using natural language.","type":"base","icon":"aiFeatures"},{"name":"In-house Service Initiation","product":"SAP S/4HANA Cloud Private Edition","desc":"Initiate in-house services from paper-based information using AI technology.","type":"base","icon":"aiFeatures"},{"name":"Resolution of Implausible Meter Readings","product":"SAP S/4HANA Cloud Private Edition","desc":"Enables machine learning-based processing of implausible meter readings in IS-U.","type":"base","icon":"aiFeatures"},{"name":"Resolution of Outsorted Billing Documents","product":"SAP S/4HANA Cloud Private Edition","desc":"Process outsorted billing documents in IS-U.","type":"base","icon":"aiFeatures"},{"name":"SAP Joule for Developers, ABAP AI capabilities","product":"SAP S/4HANA Cloud Private Edition","desc":"Accelerate ABAP development with Joule.","type":"base","icon":"joule"},{"name":"Settlement Rule Proposal for Asset Capitalization","product":"SAP S/4HANA Cloud Private Edition","desc":"Streamlines the creation of full settlement rules for investment measures.","type":"base","icon":"aiFeatures"},{"name":"Retrieval of Equipment Information in Service Management","product":"SAP S/4HANA Cloud Private Edition","desc":"Give service managers a 360° view of service history on customer equipment.","type":"base","icon":"joule"},{"name":"Master Data Governance","product":"SAP S/4HANA Cloud Private Edition","desc":"Create master data change requests and generate summaries.","type":"base","icon":"aiFeatures"},{"name":"Journal Upload","product":"SAP S/4HANA Cloud Private Edition","desc":"Accelerate period-end journal entries.","type":"base","icon":"aiFeatures"},{"name":"Maintenance Order Recommendation","product":"SAP S/4HANA Cloud Private Edition","desc":"Get maintenance order recommendations from historical data.","type":"base","icon":"aiFeatures"},{"name":"Sales Order Creation","product":"SAP S/4HANA Cloud Private Edition","desc":"Create sales orders from unstructured data.","type":"base","icon":"aiFeatures"},{"name":"Knowledge Creation Agent","product":"Knowledge Creation Agent","desc":"Create knowledge base articles based on customer tickets.","type":"base","icon":"agents"},{"name":"Q&A Agent","product":"Q&A Agent","desc":"Autonomously process and answer questions from existing customer data.","type":"base","icon":"agents"},{"name":"Batch Release Processing","product":"SAP Batch Release Hub for Life Sciences","desc":"Users can easily access critical information and make decisions swiftly.","type":"base","icon":"joule"},{"name":"Custom Release Checks","product":"SAP Batch Release Hub for Life Sciences","desc":"Analyze the documents attached to custom release checks.","type":"base","icon":"aiFeatures"},{"name":"Explain Pay","product":"SAP SuccessFactors Employee Central Payroll","desc":"Provide answers and explanations to questions regarding pay using Joule.","type":"base","icon":"joule"},{"name":"Joule Work Mobile App","product":"SAP Mobile Start","desc":"Interact with SAP apps in natural language via a smartphone or a tablet.","type":"base","icon":"joule"},{"name":"Sourcing Negotiation Agent","product":"Sourcing Negotiation Agent","desc":"Negotiate deals automatically within your custom rule.","type":"base","icon":"agents"},{"name":"Entity Extraction​","product":"SAP Service Cloud Version 2","desc":"Identify, extract, and organize relevant data from business-related content.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Service Cloud Version 2","product":"SAP Service Cloud Version 2","desc":"Provide service agents instant access to customer information.","type":"base","icon":"joule"},{"name":"Duplicate Detection","product":"SAP Service Cloud Version 2","desc":"Detect duplicate accounts automatically.","type":"base","icon":"aiFeatures"},{"name":"Case Summary","product":"SAP Service Cloud Version 2","desc":"Create a case summary using the email communications.","type":"base","icon":"aiFeatures"},{"name":"Case Topic Analyzer","product":"SAP Service Cloud Version 2","desc":"View trending topics from cases.","type":"base","icon":"aiFeatures"},{"name":"Machine Translation","product":"SAP Service Cloud Version 2","desc":"Use machine translation to translate emails.","type":"base","icon":"aiFeatures"},{"name":"Case Type Determination","product":"SAP Service Cloud Version 2","desc":"Determine the case type during the conversion of email to case.","type":"base","icon":"aiFeatures"},{"name":"Case Categorization","product":"SAP Service Cloud Version 2","desc":"Automate the case categorization process.","type":"base","icon":"aiFeatures"},{"name":"NLP Classification","product":"SAP Service Cloud Version 2","desc":"Identify sentiment from emails.","type":"base","icon":"aiFeatures"},{"name":"Premise Billed Consumption Summary","product":"SAP Service Cloud Version 2","desc":"Analyze billed consumption data and correlate it with temperature trends.","type":"base","icon":"aiFeatures"},{"name":"E-mail Draft Recommender","product":"SAP Service Cloud Version 2","desc":"Produce email drafts using AI based on previous exchanges.","type":"base","icon":"aiFeatures"},{"name":"Profanity Check","product":"SAP Service Cloud Version 2","desc":"Define a set of pejorative vocabulary.","type":"base","icon":"aiFeatures"},{"name":"Similar Case Recommendation","product":"SAP Service Cloud Version 2","desc":"Find solutions from previous similar cases that can be applied to your case.","type":"base","icon":"aiFeatures"},{"name":"Registered Product Summary","product":"SAP Service Cloud Version 2","desc":"Generate registered product summaries.","type":"base","icon":"aiFeatures"},{"name":"Account Synopsis","product":"SAP Service Cloud Version 2","desc":"Provides all the information related to an account that helps service agents.","type":"base","icon":"aiFeatures"},{"name":"Access Review","product":"SAP Cloud Identity Access Governance","desc":"Enhance certification review process with AI suggestions.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Datasphere","product":"SAP Datasphere","desc":"Streamline your SAP Datasphere tasks with an AI copilot.","type":"base","icon":"joule"},{"name":"Content Generation for Catalog","product":"SAP Datasphere","desc":"Automates the creation of business rich metadata in the catalog.","type":"base","icon":"aiFeatures"},{"name":"Semantic Generation","product":"SAP Datasphere","desc":"Generate business semantics for non-SAP data sources.","type":"base","icon":"aiFeatures"},{"name":"AI-Assisted Search","product":"SAP Datasphere","desc":"Enables natural language search queries directly within in SAP Datasphere.","type":"base","icon":"aiFeatures"},{"name":"Search Term Suggestions","product":"Intelligent Selling Services for SAP Commerce Cloud","desc":"Analyzes user search phrases and displays the most popular results.","type":"base","icon":"aiFeatures"},{"name":"Personalized Search","product":"Intelligent Selling Services for SAP Commerce Cloud","desc":"Displays search results with products tailored to users’ interests.","type":"base","icon":"aiFeatures"},{"name":"Product Recommendations","product":"Intelligent Selling Services for SAP Commerce Cloud","desc":"Show visitors the right products at the right time in their shopping journey.","type":"base","icon":"aiFeatures"},{"name":"Production Planning and Operations Agent","product":"Production Planning and Operations Agent","desc":"Accelerate order-to-delivery by releasing orders in half the time.","type":"base","icon":"agents"},{"name":"AI-Assisted Calculations","product":"SAP Analytics Cloud","desc":"Generates and explains calculations using natural language.","type":"base","icon":"aiFeatures"},{"name":"Natural Language Query","product":"SAP Analytics Cloud","desc":"Deliver tailored, contextual insights on user questions in natural language.","type":"base","icon":"aiFeatures"},{"name":"Prompt Insights","product":"SAP Analytics Cloud","desc":"Generate a response to LLM prompt stored as a story widget.","type":"base","icon":"aiFeatures"},{"name":"Story Code Generation","product":"SAP Analytics Cloud","desc":"AI-assisted story code generation generates scripts.","type":"base","icon":"aiFeatures"},{"name":"Run Forecasts in Time Series or Line Charts","product":"SAP Analytics Cloud","desc":"Automatically predict future data values in stories time series and line charts.","type":"base","icon":"aiFeatures"},{"name":"AI-Assisted Commenting","product":"SAP Analytics Cloud","desc":"Summarize existing comments and rephrase new comments when authoring.","type":"base","icon":"aiFeatures"},{"name":"Smart Insights","product":"SAP Analytics Cloud","desc":"Smart Insights analyzes data deviations, providing insights as text and visuals.","type":"base","icon":"aiFeatures"},{"name":"Smart Predict","product":"SAP Analytics Cloud","desc":"Create predictive models, deliver accurate predictions for analytics & planning.","type":"base","icon":"aiFeatures"},{"name":"Predictive Planning","product":"SAP Analytics Cloud","desc":"Predictive planning creates accurate forecasts to speed up planning activities.","type":"base","icon":"aiFeatures"},{"name":"Smart Grouping","product":"SAP Analytics Cloud","desc":"ML clustering, groups similar data points in scatter and bubble charts.","type":"base","icon":"aiFeatures"},{"name":"Data Actions","product":"SAP Analytics Cloud","desc":"Generates advanced formula scripts and comments data action descriptions.","type":"base","icon":"aiFeatures"},{"name":"Chart Summary","product":"SAP Analytics Cloud","desc":"Summarizes a SAP Analytics Cloud chart as text in Microsoft PowerPoint.","type":"base","icon":"aiFeatures"},{"name":"Change Record Management Agent","product":"Change Record Management Agent","desc":"Reduce engineering change costs and accelerate time-to-market.","type":"base","icon":"agents"},{"name":"Production Engineering","product":"SAP Digital Manufacturing","desc":"Setup and manage production processes efficiently.","type":"base","icon":"aiFeatures"},{"name":"Description Enhancement","product":"SAP Digital Manufacturing","desc":"Generate and enhance textual descriptions for issue resolution.","type":"base","icon":"aiFeatures"},{"name":"Issue Resolution Guidance","product":"SAP Digital Manufacturing","desc":"Find similar processes using past cases and bundle them for efficiency.","type":"base","icon":"aiFeatures"},{"name":"Joule with SAP Digital Manufacturing","product":"SAP Digital Manufacturing","desc":"Get quick answers based on product documentation.","type":"base","icon":"joule"},{"name":"Promotional Text Translation","product":"SAP Omnichannel Promotion Pricing","desc":"Translate promotional texts into 150+ languages with AI-powered translation.","type":"base","icon":"aiFeatures"},{"name":"SAP Joule for Consultants","product":"SAP Joule for Consultants","desc":"Accelerate SAP projects and cloud transformations with AI assistance.","type":"base","icon":"joule"},{"name":"Custom Knowledge Benchmarking","product":"SAP Joule for Consultants","desc":"Benchmark SAP Joule for Consultants and knowledge from your organization.","type":"base","icon":"joule"},{"name":"Cash Positioning Agent","product":"Cash Positioning Agent (for SAP S/4HANA Cloud Private Edition)","desc":"Automate reconciliations and propose cash optimizations.","type":"base","icon":"agents"},{"name":"Business Integrity Screening","product":"SAP Business Integrity Screening for SAP S/4HANA Cloud, private edition","desc":"Scan large volumes of data in real time with increased accuracy.","type":"base","icon":"aiFeatures"},{"name":"Intelligent Invoice Error Classification","product":"SAP Business Network for Procurement and Supply Chain","desc":"Process rejected invoices submitted through the SAP Business Network.","type":"base","icon":"aiFeatures"},{"name":"Intelligent Listings","product":"SAP Business Network for Procurement and Supply Chain","desc":"Generate product descriptions of suppliers’ catalog items.","type":"base","icon":"aiFeatures"},{"name":"Enhanced Responses to Discovery Posting","product":"SAP Business Network for Procurement and Supply Chain","desc":"Generate accurate responses to buyers’ request for information.","type":"base","icon":"aiFeatures"},{"name":"Matching Improvement","product":"SAP Business Network for Procurement and Supply Chain","desc":"Find the best-fit suppliers based on requirements.","type":"base","icon":"aiFeatures"},{"name":"Billing Posting Agent","product":"Billing Posting Agent","desc":"Automate posting‑error resolution to keep billing and cash flow on track.","type":"base","icon":"agents"},{"name":"Advanced Skill Match","product":"SAP Project and Resource Management","desc":"Find skilled employees for a resource request.","type":"base","icon":"aiFeatures"},{"name":"Carbon Emission Analysis","product":"SAP Green Ledger","desc":"Generate ad hoc reports for detailed carbon data analysis.","type":"base","icon":"joule"},{"name":"Billing Adjustment Agent","product":"Billing Adjustment Agent","desc":"Help billing clerks to automate the adjustment of billing documents.","type":"base","icon":"agents"}];
+
+/* ================================================================
+   STATE  –  data model: Project → Maps[] → UseCases[]
+================================================================ */
+let state = { projects: [] };
+
+/* Modal temp vars */
+let _editProjectId = null;
+let _mapEditId     = null;
+let _mapProjId     = null;
+let _editUseCaseId = null;
+let _ucProjId      = null;
+let _ucMapId       = null;
+
+/* Navigation */
+let currentProjectId = null;  /* null  = Home */
+let currentMapId     = null;  /* null  = Project view; string = Map view */
+
+/* Select mode (active only in Project view) */
+let selectMode   = false;
+let selectedMaps = new Set();
+
+/* Download temp vars */
+let _downloadProjId = null;
+let _downloadMapId  = null;
+
+/* ---- Persistence ---- */
+function loadState() {
+  try {
+    /* v3 state (local cache — used while Firebase loads) */
+    const raw = localStorage.getItem('opp_card_state_v3');
+    if (raw) { state = JSON.parse(raw); return; }
+
+    /* Migrate from v2 (Project → useCases[]) */
+    const rawV2 = localStorage.getItem('opp_card_state_v2');
+    if (rawV2) {
+      const old = JSON.parse(rawV2);
+      state.projects = (old.projects || []).map(p => ({
+        id:   p.id,
+        name: p.name,
+        maps: [{
+          id:       uid(),
+          name:     'Map 1',
+          useCases: (p.useCases || []).map(uc => ({ ...uc, id: uid() }))
+        }]
+      }));
+      saveState();
+    }
+  } catch(e) {}
+}
+
+function saveState() {
+  localStorage.setItem('opp_card_state_v3', JSON.stringify(state));
+  /* Push to Firebase if configured */
+  if (_firebaseReady && _dbRef) {
+    _setSyncStatus('syncing');
+    _ignoreNextFirebaseUpdate = true;
+    _dbRef.set(state).then(() => {
+      _setSyncStatus('synced');
+    }).catch((err) => {
+      console.warn('[Sync] Firebase write failed:', err);
+      _setSyncStatus('offline');
+    });
+  }
+}
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+}
+
+/* ================================================================
+   RENDER CONSTANTS
+================================================================ */
+const TIMELINE_KEYS   = ['quickWins','shortTerm','midTerm','longTerm'];
+const TIMELINE_LABELS = {
+  quickWins:'Quick Wins', shortTerm:'Short-term',
+  midTerm:'Mid-term',     longTerm:'Long-term'
+};
+const ICON_LABELS = {
+  joule:'Joule', aiFeatures:'AI Features',
+  agents:'Agents', customAI:'Custom AI'
+};
+
+/* ================================================================
+   RENDER  —  dispatches to correct view
+================================================================ */
+function render() {
+  if (!currentProjectId) {
+    renderHomeView();
+  } else if (!currentMapId) {
+    const proj = state.projects.find(p => p.id === currentProjectId);
+    if (!proj) { currentProjectId = null; render(); return; }
+    renderProjectView(proj);
+    /* Re-apply presence indicators after DOM update */
+    setTimeout(_applyPresenceIndicators, 30);
+  } else {
+    const proj = state.projects.find(p => p.id === currentProjectId);
+    const map  = proj && proj.maps.find(m => m.id === currentMapId);
+    if (!proj || !map) { currentMapId = null; render(); return; }
+    renderMapView(proj, map);
+  }
+}
+
+/* ================================================================
+   HOME VIEW  —  project tiles
+================================================================ */
+function renderHomeView() {
+  _updateSelBtn('home');
+  const wrap = document.getElementById('projects-wrap');
+  wrap.classList.remove('bar-open');
+
+  if (state.projects.length === 0) {
+    selectedMaps.clear();
+    wrap.innerHTML = `
+      <div class="empty-state">
+        <h2>No projects yet</h2>
+        <p>Create your first project to start building Opportunity Cards.</p>
+        <button class="btn btn-primary" onclick="openProjectModal()">&#43; Add New Project</button>
+      </div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="projects-grid" id="projects-grid">
+      ${state.projects.map(renderProjectTile).join('')}
+    </div>`;
+}
+
+function renderProjectTile(proj) {
+  const mapCount = proj.maps.length;
+  const allUC    = proj.maps.flatMap(m => m.useCases);
+  const total = allUC.length;
+  const nH    = allUC.filter(u => u.priority === 1).length;
+  const nM    = allUC.filter(u => u.priority === 2).length;
+  const nL    = allUC.filter(u => u.priority === 3).length;
+
+  const pbar = total > 0
+    ? `${nH ? `<div class="tile-ph" style="flex:${nH}"></div>` : ''}` +
+      `${nM ? `<div class="tile-pm" style="flex:${nM}"></div>` : ''}` +
+      `${nL ? `<div class="tile-pl" style="flex:${nL}"></div>` : ''}`
+    : `<div class="tile-pe"></div>`;
+
+  return `
+<div class="project-tile" id="tile-${proj.id}">
+  <div class="tile-pbar">${pbar}</div>
+  <div class="tile-body" onclick="enterProject('${proj.id}')" style="cursor:pointer">
+    <div class="tile-name">${escHtml(proj.name)}</div>
+    <div class="tile-sub">${mapCount} map${mapCount !== 1 ? 's' : ''}</div>
+    <div class="tile-chips">
+      ${total > 0 ? `<span class="chip chip-total">${total} use case${total !== 1 ? 's' : ''}</span>` : ''}
+      ${nH ? `<span class="chip chip-high">&#9650; ${nH} high</span>`   : ''}
+      ${nM ? `<span class="chip chip-med">&#9654; ${nM} medium</span>`  : ''}
+      ${nL ? `<span class="chip chip-low">&#9660; ${nL} low</span>`     : ''}
+    </div>
+  </div>
+  <div class="tile-foot">
+    <button class="btn btn-primary btn-sm"
+            onclick="event.stopPropagation();enterProject('${proj.id}')">Open &#8594;</button>
+    <button class="btn btn-outline btn-sm"
+            onclick="event.stopPropagation();openProjectModal('${proj.id}')">&#9998; Rename</button>
+    <button class="btn btn-danger  btn-sm"
+            onclick="event.stopPropagation();confirmDelete('project','${proj.id}')">&#128465;</button>
+  </div>
+</div>`;
+}
+
+/* ================================================================
+   PROJECT VIEW  —  map tiles (with select + bulk download)
+================================================================ */
+function renderProjectView(proj) {
+  _updateSelBtn('none');
+  const wrap = document.getElementById('projects-wrap');
+  wrap.classList.remove('bar-open', 'select-mode');
+
+  const total = proj.maps.length;
+  const nSel  = selectedMaps.size;
+
+  /* Determine select-all checkbox state */
+  const allChkClass = nSel === 0 ? '' : nSel === total ? ' full' : ' partial';
+
+  const selBarHtml = total === 0 ? '' : `
+    <div class="proj-sel-bar" id="proj-sel-bar">
+      <div class="sel-all-wrap" onclick="toggleSelectAll('${proj.id}')" title="Select / deselect all maps">
+        <div class="sel-all-chk${allChkClass}" id="proj-sel-all-chk"></div>
+        Select All
+      </div>
+      <span class="sel-count-txt${nSel > 0 ? ' has-sel' : ''}" id="proj-sel-count">
+        ${nSel === 0 ? 'No maps selected' : nSel + ' of ' + total + ' map' + (total !== 1 ? 's' : '') + ' selected'}
+      </span>
+      <span class="sel-spacer"></span>
+      <button class="btn btn-primary btn-sm sel-dl-btn" id="proj-dl-pdf"
+              onclick="bulkDownload('pdf')" ${nSel === 0 ? 'disabled' : ''}>
+        &#8681; Download PDF${nSel > 0 ? ' (' + nSel + ')' : ''}
+      </button>
+      <button class="btn btn-outline btn-sm sel-dl-btn" id="proj-dl-jpg"
+              onclick="bulkDownload('jpg')" ${nSel === 0 ? 'disabled' : ''}>
+        &#8681; JPG (ZIP)${nSel > 0 ? ' (' + nSel + ')' : ''}
+      </button>
+    </div>`;
+
+  const mapsHtml = total === 0
+    ? `<div class="empty-state" style="margin-top:40px">
+         <h2>No maps yet</h2>
+         <p>Add your first map to start building Opportunity Cards.</p>
+         <button class="btn btn-primary"
+                 onclick="openMapModal(null,'${proj.id}')">&#43; Add Map</button>
+       </div>`
+    : `<div class="maps-stack" id="maps-stack">
+         ${proj.maps.map(m => renderMapBlock(proj, m)).join('')}
+       </div>`;
+
+  wrap.innerHTML = `
+    <div class="detail-nav">
+      <button class="btn-back" onclick="goHome()">&#8592; All Projects</button>
+      <span class="detail-nav-sep">/</span>
+      <span class="detail-nav-title">${escHtml(proj.name)}</span>
+      <div class="detail-nav-actions">
+        <button class="btn btn-outline btn-sm"
+                onclick="openMapModal(null,'${proj.id}')">&#43; Add Map</button>
+        <button class="btn btn-outline btn-sm"
+                onclick="openProjectModal('${proj.id}')">&#9998; Rename</button>
+        <button class="btn btn-outline btn-sm"
+                onclick="duplicateProject('${proj.id}')">&#9107; Duplicate</button>
+        <button class="btn btn-danger btn-sm"
+                onclick="confirmDelete('project','${proj.id}')">&#128465;</button>
+      </div>
+    </div>
+    ${selBarHtml}
+    ${mapsHtml}`;
+}
+
+function renderMapTile(proj, map) { return renderMapBlock(proj, map); }
+
+function renderMapBlock(proj, map) {
+  const isSel = selectedMaps.has(map.id);
+  return `
+<div class="map-block${isSel ? ' selected' : ''}" id="block-${map.id}">
+  <div class="map-toolbar" id="toolbar-${map.id}">
+    <div class="map-tb-left">
+      <div class="map-chk-wrap" onclick="toggleSelectMap('${map.id}')">
+        <div class="map-chk${isSel ? ' on' : ''}"></div>
+      </div>
+      <span class="map-label">${escHtml(map.name)}</span>
+    </div>
+    <div class="map-tb-right">
+      <button class="btn btn-outline btn-sm"
+              onclick="openUseCaseModal('${proj.id}','${map.id}')">&#43; Add Use Case</button>
+      <button class="btn btn-outline btn-sm"
+              onclick="openMapModal('${map.id}','${proj.id}')">&#9998; Rename</button>
+      <button class="btn btn-outline btn-sm"
+              onclick="duplicateMap('${proj.id}','${map.id}')">&#9107; Duplicate</button>
+      <button class="btn btn-primary btn-sm"
+              onclick="openDownload('${proj.id}','${map.id}')">&#8681; Download</button>
+      <button class="btn btn-danger btn-sm"
+              onclick="confirmDelete('map','${map.id}','${proj.id}')">&#128465;</button>
+    </div>
+  </div>
+  ${renderOpportunityCard(proj, map)}
+</div>`;
+}
+
+/* ================================================================
+   MAP VIEW  —  single opportunity card
+================================================================ */
+function renderMapView(proj, map) {
+  _updateSelBtn('map');
+  const wrap = document.getElementById('projects-wrap');
+  wrap.classList.remove('bar-open');
+
+  wrap.innerHTML = `
+    <div class="detail-nav">
+      <button class="btn-back" onclick="exitMap()">&#8592; ${escHtml(proj.name)}</button>
+      <span class="detail-nav-sep">/</span>
+      <span class="detail-nav-title">${escHtml(map.name)} &mdash; Opportunity Card</span>
+      <div class="detail-nav-actions">
+        <button class="btn btn-outline btn-sm"
+                onclick="openUseCaseModal('${proj.id}','${map.id}')">&#43; Add Use Case</button>
+        <button class="btn btn-outline btn-sm"
+                onclick="openMapModal('${map.id}','${proj.id}')">&#9998; Rename</button>
+        <button class="btn btn-outline btn-sm"
+                onclick="duplicateMap('${proj.id}','${map.id}')">&#9107; Duplicate</button>
+        <button class="btn btn-primary btn-sm"
+                onclick="openDownload('${proj.id}','${map.id}')">&#8681; Download</button>
+        <button class="btn btn-danger  btn-sm"
+                onclick="confirmDelete('map','${map.id}','${proj.id}')">&#128465;</button>
+      </div>
+    </div>
+    ${renderOpportunityCard(proj, map)}`;
+}
+
+/* ================================================================
+   OPPORTUNITY CARD  (used by map view + bulk download)
+================================================================ */
+function renderOpportunityCard(proj, map) {
+  const cardId = 'card-' + map.id;
+
+  function getCards(priority, timeline) {
+    return map.useCases
+      .filter(uc => uc.priority === priority && uc.timeline === timeline)
+      .map(uc => renderUseCase(uc, proj.id, map.id))
+      .join('');
+  }
+
+  function band(priority) {
+    const labelMap = { 1:'High Priority', 2:'Medium Priority', 3:'Low Priority' };
+    const cols = TIMELINE_KEYS.map(tl => `
+      <div class="t-col">${getCards(priority, tl)}</div>`).join('');
+    const allEmpty = TIMELINE_KEYS.every(tl =>
+      map.useCases.filter(uc => uc.priority === priority && uc.timeline === tl).length === 0
+    );
+    const emptyHint = allEmpty
+      ? `<span class="band-empty-row">${labelMap[priority]} &mdash; no items yet</span>` : '';
+    return `<div class="p-band">${emptyHint}${cols}</div>`;
+  }
+
+  const legendIcons = Object.keys(ICON_LABELS).map(k => `
+    <div class="il-item">
+      <img src="${ICON_URI[k]}" alt="${ICON_LABELS[k]}">
+      <span>${ICON_LABELS[k]}</span>
+    </div>`).join('');
+
+  return `
+<div class="opportunity-card" id="${cardId}">
+  <img class="oc-sap-logo" src="${SAP_LOGO_SVG}" alt="SAP">
+
+  <div class="oc-title">
+    <h1>
+      <span class="proj-name">${escHtml(map.name)}&nbsp;</span>
+      <span class="opp-lbl">Opportunity Card</span>
+    </h1>
+    <p class="oc-proj-sub">${escHtml(proj.name)}</p>
+  </div>
+
+  <div class="oc-body">
+    <div class="p-arrow-col">
+      <div class="p-arrow-inner">
+        <div class="p-arrowhead"></div>
+        <div class="p-shaft"><span class="p-shaft-text">Priority</span></div>
+      </div>
+    </div>
+    <div class="oc-grid">
+      ${band(1)}
+      <hr class="dashed-sep">
+      ${band(2)}
+      <hr class="dashed-sep">
+      ${band(3)}
+      <div class="legend-row">
+        <div class="icon-legend">${legendIcons}</div>
+        <div class="type-legend">
+          <div class="tl-item"><div class="tl-swatch base"></div> Base</div>
+          <div class="tl-item"><div class="tl-swatch premium"></div> Premium</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="timeline-bar">
+    <div class="tl-spacer"></div>
+    <div class="tl-labels">
+      <div class="tl-lbl">Quick Wins</div>
+      <div class="tl-lbl">Short-term</div>
+      <div class="tl-lbl">Mid-term</div>
+      <div class="tl-lbl">Long-term</div>
+    </div>
+  </div>
+
+  <div class="oc-footer">COE KSA Team | SAP</div>
+
+</div>`;
+}
+
+function renderUseCase(uc, projId, mapId) {
+  const descHtml = uc.description
+    ? `<span class="uc-desc">${escHtml(uc.description)}</span>` : '';
+  return `
+    <div class="uc-card ${escHtml(uc.type)}" id="uc-${uc.id}">
+      <div class="uc-text">
+        <span class="uc-name">${escHtml(uc.name)}</span>
+        ${descHtml}
+      </div>
+      <div class="uc-icon-wrap">
+        <img src="${ICON_URI[uc.icon] || ''}" alt="${escHtml(ICON_LABELS[uc.icon] || '')}">
+      </div>
+      <div class="uc-actions">
+        <button class="uca-btn" title="Edit"
+                onclick="openUseCaseModal('${projId}','${mapId}','${uc.id}')">&#9998;</button>
+        <button class="uca-btn del" title="Delete"
+                onclick="confirmDelete('usecase','${uc.id}','${projId}','${mapId}')">&#x2715;</button>
+      </div>
+    </div>`;
+}
+
+/* ================================================================
+   NAVIGATION
+================================================================ */
+function enterProject(id) {
+  currentProjectId = id;
+  currentMapId     = null;
+  selectedMaps.clear();
+  _setPresenceMap(null);
+  render();
+  /* Re-apply presence after render */
+  setTimeout(_applyPresenceIndicators, 50);
+}
+
+function goHome() {
+  currentProjectId = null;
+  currentMapId     = null;
+  selectedMaps.clear();
+  _setPresenceMap(null);
+  render();
+}
+
+function enterMap(projId, mapId) {
+  currentProjectId = projId;
+  currentMapId     = mapId;
+  selectedMaps.clear();
+  _setPresenceMap(mapId);
+  render();
+}
+
+function exitMap() {
+  currentMapId = null;
+  selectedMaps.clear();
+  _setPresenceMap(null);
+  render();
+  /* Re-apply presence after render */
+  setTimeout(_applyPresenceIndicators, 50);
+}
+
+/* ================================================================
+   SELECT ALL / DESELECT ALL
+================================================================ */
+function toggleSelectAll(projId) {
+  const proj = state.projects.find(p => p.id === projId);
+  if (!proj) return;
+  const allSelected = proj.maps.length > 0 && proj.maps.every(m => selectedMaps.has(m.id));
+  proj.maps.forEach(m => {
+    const want = !allSelected;
+    if (want) selectedMaps.add(m.id);
+    else      selectedMaps.delete(m.id);
+    const block = document.getElementById('block-' + m.id);
+    if (block) {
+      block.classList.toggle('selected', want);
+      const chk = block.querySelector('.map-chk');
+      if (chk) chk.classList.toggle('on', want);
+    }
+  });
+  _updateProjSelBar();
+}
+
+/* ================================================================
+   SELECT MODE  (project view only — selects maps)
+================================================================ */
+/* toggleSelectMode no longer used — select is always-on in project view */
+function toggleSelectMode() {}
+
+function toggleSelectMap(id) {
+  if (selectedMaps.has(id)) selectedMaps.delete(id);
+  else selectedMaps.add(id);
+
+  /* Patch the block DOM directly — avoids a full re-render */
+  const block = document.getElementById('block-' + id);
+  if (block) {
+    const sel = selectedMaps.has(id);
+    block.classList.toggle('selected', sel);
+    const chk = block.querySelector('.map-chk');
+    if (chk) chk.classList.toggle('on', sel);
+  }
+  _updateProjSelBar();
+}
+
+/* No-op — header select button removed; kept for safety */
+function _updateSelBtn(view) {}
+
+/* Keep for compatibility — actual updates go through _updateProjSelBar */
+function updateSelectBar() { _updateProjSelBar(); }
+
+/* Update the inline select bar in project view */
+function _updateProjSelBar() {
+  const proj = currentProjectId
+    ? state.projects.find(p => p.id === currentProjectId) : null;
+  if (!proj) return;
+
+  const total       = proj.maps.length;
+  const nSel        = selectedMaps.size;
+  const allChkEl    = document.getElementById('proj-sel-all-chk');
+  const countEl     = document.getElementById('proj-sel-count');
+  const pdfBtn      = document.getElementById('proj-dl-pdf');
+  const jpgBtn      = document.getElementById('proj-dl-jpg');
+
+  if (!allChkEl) return; /* not in project view */
+
+  /* Select-all checkbox state */
+  allChkEl.className = 'sel-all-chk' +
+    (nSel === 0 ? '' : nSel === total ? ' full' : ' partial');
+
+  /* Count label */
+  if (countEl) {
+    countEl.textContent = nSel === 0
+      ? 'No maps selected'
+      : nSel + ' of ' + total + ' map' + (total !== 1 ? 's' : '') + ' selected';
+    countEl.className = 'sel-count-txt' + (nSel > 0 ? ' has-sel' : '');
+  }
+
+  /* Download buttons */
+  [pdfBtn, jpgBtn].forEach(btn => {
+    if (!btn) return;
+    btn.disabled = nSel === 0;
+  });
+  if (pdfBtn) pdfBtn.textContent =
+    '\u2B07 Download PDF' + (nSel > 0 ? ' (' + nSel + ')' : '');
+  if (jpgBtn) jpgBtn.textContent =
+    '\u2B07 JPG (ZIP)' + (nSel > 0 ? ' (' + nSel + ')' : '');
+}
+
+/* ================================================================
+   SVG → PNG HELPERS  (for html2canvas)
+================================================================ */
+function svgDataUriToPng(svgUri, w, h) {
+  return new Promise((resolve, reject) => {
+    const img  = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.onerror = reject;
+    img.src = svgUri;
+  });
+}
+
+async function preConvertSVGs(el) {
+  const allImgs  = Array.from(el.querySelectorAll('img'));
+  const origSrcs = allImgs.map(i => i.src);
+  await Promise.all(allImgs.map(async img => {
+    if (!img.src.startsWith('data:image/svg')) return;
+    const rect = img.getBoundingClientRect();
+    const px   = Math.round((rect.width  || 22) * 3);
+    const py   = Math.round((rect.height || 22) * 3);
+    try {
+      img.src = await svgDataUriToPng(img.src, px, py);
+      if (!img.complete) await new Promise(r => { img.onload = r; img.onerror = r; });
+    } catch(e) { /* keep original on error */ }
+  }));
+  return { allImgs, origSrcs };
+}
+
+function restoreSVGs({ allImgs, origSrcs }) {
+  allImgs.forEach((img, i) => { img.src = origSrcs[i]; });
+}
+
+/* ================================================================
+   BULK DOWNLOAD  (selected maps in current project view)
+================================================================ */
+async function bulkDownload(format) {
+  const ids  = Array.from(selectedMaps);
+  if (ids.length === 0) return;
+
+  const proj = state.projects.find(p => p.id === currentProjectId);
+  if (!proj) return;
+
+  document.getElementById('spinner-msg').textContent =
+    `Generating ${ids.length} map${ids.length > 1 ? 's' : ''}…`;
+  document.getElementById('spinner').classList.remove('hidden');
+  await new Promise(r => setTimeout(r, 80));
+
+  const renderHost = document.createElement('div');
+  renderHost.style.cssText =
+    'position:fixed;top:0;left:0;width:1300px;background:white;' +
+    'z-index:399;pointer-events:none;padding:22px 0 0;';
+  document.body.appendChild(renderHost);
+
+  const captures = [];
+  let svgCtx = null;
+
+  try {
+    for (let i = 0; i < ids.length; i++) {
+      const map = proj.maps.find(m => m.id === ids[i]);
+      if (!map) continue;
+
+      document.getElementById('spinner-msg').textContent =
+        `Rendering ${i + 1} / ${ids.length}: ${map.name}…`;
+
+      renderHost.innerHTML = renderOpportunityCard(proj, map);
+      const cardEl = renderHost.querySelector('.opportunity-card');
+      await new Promise(r => setTimeout(r, 120));
+
+      svgCtx = await preConvertSVGs(cardEl);
+
+      const canvas = await html2canvas(cardEl, {
+        scale: 3, useCORS: true, allowTaint: true,
+        backgroundColor: '#ffffff', logging: false,
+        height: cardEl.scrollHeight,
+        windowHeight: cardEl.scrollHeight + 200
+      });
+
+      captures.push({
+        name: (proj.name + '_' + map.name).replace(/[^a-z0-9]/gi, '_'),
+        canvas
+      });
+    }
+
+    document.getElementById('spinner-msg').textContent = 'Packaging…';
+    await new Promise(r => setTimeout(r, 50));
+
+    if (format === 'pdf') {
+      const { jsPDF } = window.jspdf;
+      const MM = 96 / 25.4;
+      let pdf = null;
+      for (const { canvas } of captures) {
+        const pdfW   = canvas.width  / (3 * MM);
+        const pdfH   = canvas.height / (3 * MM);
+        const orient = pdfW >= pdfH ? 'l' : 'p';
+        if (!pdf) {
+          pdf = new jsPDF({ orientation: orient, unit: 'mm', format: [pdfW, pdfH] });
+        } else {
+          pdf.addPage([pdfW, pdfH], orient);
+        }
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
+      }
+      if (pdf) {
+        const safe = (proj.name).replace(/[^a-z0-9]/gi, '_');
+        pdf.save(safe + '_Opportunity_Cards.pdf');
+      }
+
+    } else if (format === 'jpg') {
+      if (typeof JSZip === 'undefined') {
+        alert('JSZip library not loaded. Check your internet connection.');
+        return;
+      }
+      const zip = new JSZip();
+      for (const { name, canvas } of captures) {
+        const b64 = canvas.toDataURL('image/jpeg', 0.97).split(',')[1];
+        zip.file(name + '_Opportunity_Card.jpg', b64, { base64: true });
+      }
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const a    = document.createElement('a');
+      a.href     = URL.createObjectURL(blob);
+      a.download = proj.name.replace(/[^a-z0-9]/gi, '_') + '_Opportunity_Cards.zip';
+      a.click();
+    }
+
+  } catch(err) {
+    console.error(err);
+    alert('Bulk download failed: ' + err.message);
+  } finally {
+    if (renderHost.parentNode) document.body.removeChild(renderHost);
+    document.getElementById('spinner').classList.add('hidden');
+  }
+}
+
+/* ================================================================
+   USE CASE CATALOG SEARCH
+================================================================ */
+let _ucAppliedDesc    = '';
+let _ucFilterProduct  = '';
+let _ucAppliedProduct = '';
+let _ucSearchResults  = [];
+
+function onUcSearch(q) {
+  const trimmed = (q || '').trim();
+  const ql      = trimmed.toLowerCase();
+  const base    = _ucFilterProduct
+    ? UC_CATALOG.filter(c => c.product === _ucFilterProduct)
+    : UC_CATALOG;
+  if (!trimmed && !_ucFilterProduct) { hideUcResults(); return; }
+  _ucSearchResults = trimmed
+    ? base.filter(c => c.name.toLowerCase().includes(ql)).slice(0, 9)
+    : base.slice(0, 9);
+  if (!_ucSearchResults.length) { hideUcResults(); return; }
+  renderUcResults();
+}
+
+function onUcFilter(product) {
+  _ucFilterProduct = product;
+  onUcSearch(document.getElementById('uc-name-input').value);
+}
+
+function populateUcFilter() {
+  const sel = document.getElementById('uc-solution-filter');
+  if (!sel || sel.options.length > 1) return;  /* already populated */
+  const products = [...new Set(UC_CATALOG.map(c => c.product))].sort();
+  products.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value       = p;
+    opt.textContent = p;
+    sel.appendChild(opt);
+  });
+}
+
+function renderUcResults() {
+  const el = document.getElementById('uc-search-results');
+  if (!el) return;
+  el.innerHTML = _ucSearchResults.map((c, i) => `
+    <div class="ucsr-item" onmousedown="applyUcResult(event,${i})">
+      <div class="ucsr-name">${escHtml(c.name)}</div>
+      <div class="ucsr-meta">${escHtml(c.product)} &bull; ${c.type === 'premium' ? 'Premium' : 'Base'} &bull; ${ICON_LABELS[c.icon] || c.icon}</div>
+    </div>`).join('');
+  el.classList.remove('hidden');
+}
+
+function hideUcResults() {
+  const el = document.getElementById('uc-search-results');
+  if (el) el.classList.add('hidden');
+}
+
+function applyUcResult(e, idx) {
+  e.preventDefault();   /* keep focus on input */
+  const c = _ucSearchResults[idx];
+  if (!c) return;
+
+  /* Fill name */
+  const nameEl = document.getElementById('uc-name-input');
+  if (nameEl) nameEl.value = c.name;
+
+  /* Auto-select type */
+  selectTypeByVal(c.type);
+  /* Auto-select icon */
+  selectIconByVal(c.icon);
+
+  /* Store description */
+  _ucAppliedDesc    = c.desc;
+  _ucAppliedProduct = c.product;
+
+  /* Show applied badge */
+  const row = document.getElementById('uc-applied-row');
+  const prod = document.getElementById('uc-applied-prod');
+  if (row) row.classList.remove('hidden');
+  if (prod) prod.textContent = c.product;
+
+  /* Pre-fill description textarea */
+  const descBox = document.getElementById('uc-desc-preview');
+  if (descBox) descBox.value = c.desc;
+
+  hideUcResults();
+}
+
+function clearUcApplied() {
+  _ucAppliedDesc    = '';
+  _ucAppliedProduct = '';
+  const row  = document.getElementById('uc-applied-row');
+  const dBox = document.getElementById('uc-desc-preview');
+  if (row)  row.classList.add('hidden');
+  if (dBox) dBox.value = '';
+}
+
+function selectTypeByVal(val) {
+  document.querySelectorAll('.type-opt').forEach(el => {
+    el.classList.toggle('sel', el.dataset.val === val);
+  });
+}
+
+function selectIconByVal(val) {
+  document.querySelectorAll('.icon-opt').forEach(el => {
+    el.classList.toggle('sel', el.dataset.val === val);
+  });
+}
+
+/* ================================================================
+   MODAL HELPERS
+================================================================ */
+function openModal(id)  { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ================================================================
+   PROJECT MODAL
+================================================================ */
+function openProjectModal(projId) {
+  _editProjectId = projId || null;
+  document.getElementById('proj-modal-title').textContent =
+    projId ? 'Rename Project' : 'New Project';
+  const inp = document.getElementById('proj-name-input');
+  if (projId) {
+    const p = state.projects.find(x => x.id === projId);
+    inp.value = p ? p.name : '';
+  } else {
+    inp.value = '';
+  }
+  openModal('proj-overlay');
+  setTimeout(() => inp.focus(), 80);
+}
+
+function saveProject() {
+  const name = document.getElementById('proj-name-input').value.trim();
+  if (!name) { alert('Please enter a project name.'); return; }
+
+  if (_editProjectId) {
+    const p = state.projects.find(x => x.id === _editProjectId);
+    if (p) p.name = name;
+  } else {
+    state.projects.push({ id: uid(), name, maps: [] });
+  }
+
+  saveState();
+  closeModal('proj-overlay');
+  render();
+}
+
+/* ================================================================
+   MAP MODAL
+================================================================ */
+function openMapModal(mapId, projId) {
+  _mapEditId = mapId || null;
+  _mapProjId = projId;
+  document.getElementById('map-modal-title').textContent =
+    mapId ? 'Rename Map' : 'New Map';
+  const inp = document.getElementById('map-name-input');
+  if (mapId) {
+    const proj = state.projects.find(p => p.id === projId);
+    const map  = proj && proj.maps.find(m => m.id === mapId);
+    inp.value  = map ? map.name : '';
+  } else {
+    inp.value = '';
+  }
+  openModal('map-overlay');
+  setTimeout(() => inp.focus(), 80);
+}
+
+function saveMap() {
+  const name = document.getElementById('map-name-input').value.trim();
+  if (!name) { alert('Please enter a map name.'); return; }
+
+  const proj = state.projects.find(p => p.id === _mapProjId);
+  if (!proj) return;
+
+  if (_mapEditId) {
+    const map = proj.maps.find(m => m.id === _mapEditId);
+    if (map) map.name = name;
+  } else {
+    proj.maps.push({ id: uid(), name, useCases: [] });
+  }
+
+  saveState();
+  closeModal('map-overlay');
+  render();
+}
+
+/* ================================================================
+   USE CASE MODAL
+================================================================ */
+function openUseCaseModal(projId, mapId, ucId) {
+  _ucProjId      = projId;
+  _ucMapId       = mapId;
+  _editUseCaseId = ucId || null;
+  /* Track editing presence for this map */
+  _setPresenceMap(mapId);
+
+  document.getElementById('uc-modal-title').textContent =
+    ucId ? 'Edit Use Case' : 'Add Use Case';
+
+  /* Reset form */
+  selectSegByVal('priority-seg', null);
+  selectSegByVal('timeline-seg', null);
+  document.querySelectorAll('.type-opt').forEach(el => el.classList.remove('sel'));
+  document.querySelectorAll('.icon-opt').forEach(el => el.classList.remove('sel'));
+  document.getElementById('uc-name-input').value = '';
+
+  /* Reset catalog search state */
+  _ucAppliedDesc    = '';
+  _ucAppliedProduct = '';
+  _ucFilterProduct  = '';
+  const _sfEl = document.getElementById('uc-solution-filter');
+  if (_sfEl) { populateUcFilter(); _sfEl.value = ''; }
+  hideUcResults();
+  const _aRow = document.getElementById('uc-applied-row');
+  const _dBox = document.getElementById('uc-desc-preview');
+  if (_aRow) _aRow.classList.add('hidden');
+  if (_dBox) _dBox.value = '';
+
+  if (ucId) {
+    const proj = state.projects.find(p => p.id === projId);
+    const map  = proj && proj.maps.find(m => m.id === mapId);
+    const uc   = map  && map.useCases.find(u => u.id === ucId);
+    if (uc) {
+      document.getElementById('uc-name-input').value = uc.name;
+      selectSegByVal('priority-seg', String(uc.priority));
+      selectSegByVal('timeline-seg', uc.timeline);
+      const typeEl = document.querySelector(`.type-opt[data-val="${uc.type}"]`);
+      if (typeEl) typeEl.classList.add('sel');
+      const iconEl = document.querySelector(`.icon-opt[data-val="${uc.icon}"]`);
+      if (iconEl) iconEl.classList.add('sel');
+      /* Restore description into textarea */
+      const _editDescBox = document.getElementById('uc-desc-preview');
+      if (_editDescBox) _editDescBox.value = uc.description || '';
+    }
+  }
+
+  openModal('uc-overlay');
+  setTimeout(() => document.getElementById('uc-name-input').focus(), 80);
+}
+
+function selectSeg(groupId, el) {
+  document.querySelectorAll(`#${groupId} .seg-opt`).forEach(x => x.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+function selectSegByVal(groupId, val) {
+  document.querySelectorAll(`#${groupId} .seg-opt`).forEach(el => {
+    el.classList.toggle('sel', el.dataset.val === val);
+  });
+}
+
+function selectType(el) {
+  document.querySelectorAll('.type-opt').forEach(x => x.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+function selectIcon(el) {
+  document.querySelectorAll('.icon-opt').forEach(x => x.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+function getSegVal(groupId) {
+  const sel = document.querySelector(`#${groupId} .seg-opt.sel`);
+  return sel ? sel.dataset.val : null;
+}
+
+function saveUseCase() {
+  const name     = document.getElementById('uc-name-input').value.trim();
+  const priority = getSegVal('priority-seg');
+  const timeline = getSegVal('timeline-seg');
+  const typeEl   = document.querySelector('.type-opt.sel');
+  const iconEl   = document.querySelector('.icon-opt.sel');
+
+  if (!name)     { alert('Please enter a use case name.');           return; }
+  if (!priority) { alert('Please select a priority level.');         return; }
+  if (!timeline) { alert('Please select an implementation timeline.'); return; }
+  if (!typeEl)   { alert('Please select Base or Premium.');          return; }
+  if (!iconEl)   { alert('Please select an icon type.');             return; }
+
+  const proj = state.projects.find(p => p.id === _ucProjId);
+  const map  = proj && proj.maps.find(m => m.id === _ucMapId);
+  if (!map) return;
+
+  if (_editUseCaseId) {
+    const uc = map.useCases.find(u => u.id === _editUseCaseId);
+    if (uc) {
+      uc.name        = name;
+      uc.description = (document.getElementById('uc-desc-preview').value || '').trim();
+      uc.priority    = parseInt(priority, 10);
+      uc.timeline    = timeline;
+      uc.type        = typeEl.dataset.val;
+      uc.icon        = iconEl.dataset.val;
+    }
+  } else {
+    map.useCases.push({
+      id:          uid(),
+      name,
+      description: (document.getElementById('uc-desc-preview').value || '').trim(),
+      priority:    parseInt(priority, 10),
+      timeline,
+      type:        typeEl.dataset.val,
+      icon:        iconEl.dataset.val
+    });
+  }
+
+  saveState();
+  closeModal('uc-overlay');
+  render();
+}
+
+/* ================================================================
+   CONFIRM DELETE
+================================================================ */
+let _confirmAction = null;
+
+function confirmDelete(type, id, projId, mapId) {
+  const title = document.getElementById('confirm-title');
+  const msg   = document.getElementById('confirm-msg');
+  const btn   = document.getElementById('confirm-ok-btn');
+
+  if (type === 'project') {
+    const p = state.projects.find(x => x.id === id);
+    title.textContent = 'Delete Project';
+    msg.textContent   = `Delete "${p ? p.name : ''}" and all its maps? This cannot be undone.`;
+    _confirmAction = () => {
+      state.projects = state.projects.filter(x => x.id !== id);
+      if (currentProjectId === id) { currentProjectId = null; currentMapId = null; }
+      saveState(); render();
+    };
+
+  } else if (type === 'map') {
+    const proj = state.projects.find(x => x.id === projId);
+    const map  = proj && proj.maps.find(m => m.id === id);
+    title.textContent = 'Delete Map';
+    msg.textContent   = `Delete "${map ? map.name : ''}" and all its use cases? This cannot be undone.`;
+    _confirmAction = () => {
+      if (proj) proj.maps = proj.maps.filter(m => m.id !== id);
+      if (currentMapId === id) currentMapId = null;
+      selectedMaps.delete(id);
+      saveState(); render();
+    };
+
+  } else {
+    title.textContent = 'Delete Use Case';
+    msg.textContent   = 'Remove this use case from the map?';
+    _confirmAction = () => {
+      const proj = state.projects.find(x => x.id === projId);
+      const map  = proj && proj.maps.find(m => m.id === mapId);
+      if (map) map.useCases = map.useCases.filter(u => u.id !== id);
+      saveState(); render();
+    };
+  }
+
+  btn.onclick = () => { closeModal('confirm-overlay'); _confirmAction(); };
+  openModal('confirm-overlay');
+}
+
+/* ================================================================
+   DUPLICATE
+================================================================ */
+function duplicateProject(projId) {
+  const orig = state.projects.find(p => p.id === projId);
+  if (!orig) return;
+  const copy = JSON.parse(JSON.stringify(orig));
+  copy.id   = uid();
+  copy.name = orig.name + ' (Copy)';
+  copy.maps = copy.maps.map(m => ({
+    ...m,
+    id:       uid(),
+    useCases: m.useCases.map(uc => ({ ...uc, id: uid() }))
+  }));
+  const idx = state.projects.findIndex(p => p.id === projId);
+  state.projects.splice(idx + 1, 0, copy);
+  currentProjectId = null;
+  currentMapId     = null;
+  saveState();
+  render();
+}
+
+function duplicateMap(projId, mapId) {
+  const proj = state.projects.find(p => p.id === projId);
+  if (!proj) return;
+  const orig = proj.maps.find(m => m.id === mapId);
+  if (!orig) return;
+  const copy = JSON.parse(JSON.stringify(orig));
+  copy.id       = uid();
+  copy.name     = orig.name + ' (Copy)';
+  copy.useCases = copy.useCases.map(uc => ({ ...uc, id: uid() }));
+  const idx = proj.maps.findIndex(m => m.id === mapId);
+  proj.maps.splice(idx + 1, 0, copy);
+  currentMapId = null;  /* return to project view */
+  saveState();
+  render();
+}
+
+/* ================================================================
+   SINGLE MAP DOWNLOAD
+================================================================ */
+function openDownload(projId, mapId) {
+  _downloadProjId = projId;
+  _downloadMapId  = mapId;
+  openModal('fmt-overlay');
+}
+
+async function execDownload(format) {
+  closeModal('fmt-overlay');
+  const proj = state.projects.find(p => p.id === _downloadProjId);
+  const map  = proj && proj.maps.find(m => m.id === _downloadMapId);
+  if (!proj || !map) return;
+
+  const cardEl = document.getElementById('card-' + _downloadMapId);
+  if (!cardEl) return;
+
+  document.getElementById('spinner-msg').textContent =
+    'Generating ' + format.toUpperCase() + '…';
+  document.getElementById('spinner').classList.remove('hidden');
+
+  /* Hide hover actions */
+  const ucActions = cardEl.querySelectorAll('.uc-actions');
+  ucActions.forEach(el => { el.style.display = 'none'; });
+
+  /* Pre-convert SVGs */
+  const svgCtx = await preConvertSVGs(cardEl);
+  await new Promise(r => setTimeout(r, 200));
+
+  try {
+    const SCALE  = 3;
+    const canvas = await html2canvas(cardEl, {
+      scale:           SCALE,
+      useCORS:         true,
+      allowTaint:      true,
+      backgroundColor: '#ffffff',
+      logging:         false,
+      height:          cardEl.scrollHeight,
+      windowHeight:    cardEl.scrollHeight + 200
+    });
+
+    const safeName = (proj.name + '_' + map.name).replace(/[^a-z0-9]/gi, '_');
+
+    if (format === 'jpg') {
+      const a    = document.createElement('a');
+      a.download = safeName + '_Opportunity_Card.jpg';
+      a.href     = canvas.toDataURL('image/jpeg', 0.97);
+      a.click();
+
+    } else if (format === 'pdf') {
+      const { jsPDF } = window.jspdf;
+      const MM     = 96 / 25.4;
+      const pdfW   = canvas.width  / (SCALE * MM);
+      const pdfH   = canvas.height / (SCALE * MM);
+      const orient = pdfW >= pdfH ? 'l' : 'p';
+      const pdf    = new jsPDF({ orientation: orient, unit: 'mm', format: [pdfW, pdfH] });
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
+      pdf.save(safeName + '_Opportunity_Card.pdf');
+    }
+
+  } catch(err) {
+    console.error(err);
+    alert('Download failed: ' + err.message);
+  } finally {
+    restoreSVGs(svgCtx);
+    ucActions.forEach(el => { el.style.display = ''; });
+    document.getElementById('spinner').classList.add('hidden');
+  }
+}
+
+/* ================================================================
+   KEYBOARD SHORTCUTS
+================================================================ */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    /* Close search dropdown first; only close modal if already closed */
+    const srEl = document.getElementById('uc-search-results');
+    if (srEl && !srEl.classList.contains('hidden')) {
+      srEl.classList.add('hidden');
+      return;
+    }
+    ['proj-overlay','map-overlay','uc-overlay','fmt-overlay','confirm-overlay']
+      .forEach(closeModal);
+    /* Escape also clears map selection in project view */
+    if (selectedMaps.size > 0) { selectedMaps.clear(); if (currentProjectId && !currentMapId) render(); }
+  }
+  if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
+    const ov = id => !document.getElementById(id).classList.contains('hidden');
+    if (ov('proj-overlay')) { e.preventDefault(); saveProject(); }
+    else if (ov('map-overlay')) { e.preventDefault(); saveMap(); }
+    else if (ov('uc-overlay'))  { e.preventDefault(); saveUseCase(); }
+  }
+});
+
+/* ================================================================
+   INIT
+================================================================ */
+populateIconPreviews();
+loadState();
+render();
+
+/* Initialize Firebase for real-time sync */
+initFirebase();
+
+/* If already unlocked, start presence */
+if (sessionStorage.getItem('opp_card_unlocked') === '1') {
+  _initPresence();
+}
+</script>
+</body>
+</html>
